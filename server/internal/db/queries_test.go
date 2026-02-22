@@ -165,3 +165,112 @@ func createTestTask(t *testing.T, db *DB, workflowID string) *models.Task {
 	}
 	return task
 }
+
+func TestCreateTaskLogWithEmptyMessage(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+	workflow := createTestWorkflow(t, db, project.ID, ticket.ID)
+	task := createTestTask(t, db, workflow.ID)
+
+	log := &models.TaskLog{
+		TaskID:   task.ID,
+		LogLevel: models.LogLevelInfo,
+		Message:  "",
+	}
+
+	err := db.CreateTaskLog(log)
+	if err != nil {
+		t.Fatalf("CreateTaskLog should handle empty message: %v", err)
+	}
+
+	retrieved, err := db.GetTaskLogs(task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskLogs failed: %v", err)
+	}
+
+	if len(retrieved) != 1 || retrieved[0].Message != "" {
+		t.Error("Expected empty message to be stored")
+	}
+}
+
+func TestGetTaskLogsReturnsEmptyForNonexistentTask(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	logs, err := db.GetTaskLogs("nonexistent-task-id")
+	if err != nil {
+		t.Fatalf("GetTaskLogs should not error for nonexistent task: %v", err)
+	}
+
+	if len(logs) != 0 {
+		t.Errorf("Expected 0 logs for nonexistent task, got %d", len(logs))
+	}
+}
+
+func TestGetTaskLogsAfterReturnsEmptyWhenNone(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+	workflow := createTestWorkflow(t, db, project.ID, ticket.ID)
+	task := createTestTask(t, db, workflow.ID)
+
+	log1 := &models.TaskLog{TaskID: task.ID, LogLevel: models.LogLevelInfo, Message: "Only log"}
+	db.CreateTaskLog(log1)
+
+	futureTime := time.Now().Add(1 * time.Hour)
+	retrieved, err := db.GetTaskLogsAfter(task.ID, futureTime)
+	if err != nil {
+		t.Fatalf("GetTaskLogsAfter failed: %v", err)
+	}
+
+	if len(retrieved) != 0 {
+		t.Errorf("Expected 0 logs after future time, got %d", len(retrieved))
+	}
+}
+
+func TestTaskLogLevelTypes(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+	workflow := createTestWorkflow(t, db, project.ID, ticket.ID)
+	task := createTestTask(t, db, workflow.ID)
+
+	levels := []models.LogLevel{
+		models.LogLevelInfo,
+		models.LogLevelDebug,
+		models.LogLevelError,
+	}
+
+	for _, level := range levels {
+		log := &models.TaskLog{
+			TaskID:   task.ID,
+			LogLevel: level,
+			Message:  "Test message for " + string(level),
+		}
+		if err := db.CreateTaskLog(log); err != nil {
+			t.Fatalf("CreateTaskLog failed for level %s: %v", level, err)
+		}
+	}
+
+	logs, err := db.GetTaskLogs(task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskLogs failed: %v", err)
+	}
+
+	if len(logs) != len(levels) {
+		t.Errorf("Expected %d logs, got %d", len(levels), len(logs))
+	}
+
+	for i, log := range logs {
+		if log.LogLevel != levels[i] {
+			t.Errorf("Log %d: expected level %s, got %s", i, levels[i], log.LogLevel)
+		}
+	}
+}

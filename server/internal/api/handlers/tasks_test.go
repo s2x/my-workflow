@@ -178,3 +178,138 @@ func splitSSEData(body string) []string {
 	}
 	return result
 }
+
+func TestStreamLogsHandlesNewLogsWhileRunning(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	task := createTestTaskForHandler(t, database)
+
+	database.CreateTaskLog(&models.TaskLog{
+		TaskID:   task.ID,
+		LogLevel: models.LogLevelInfo,
+		Message:  "Initial log",
+	})
+
+	handler := NewTaskHandler(database)
+
+	done := make(chan bool)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		database.CreateTaskLog(&models.TaskLog{
+			TaskID:   task.ID,
+			LogLevel: models.LogLevelInfo,
+			Message:  "New log while running",
+		})
+		time.Sleep(700 * time.Millisecond)
+		database.UpdateTaskStatus(task.ID, models.TaskCompleted)
+		done <- true
+	}()
+
+	req := httptest.NewRequest("GET", "/api/tasks/"+task.ID+"/logs/stream", nil)
+	w := httptest.NewRecorder()
+	req.SetPathValue("id", task.ID)
+
+	handler.StreamLogs(w, req)
+	<-done
+
+	body := w.Body.String()
+
+	if !containsLogMessage(body, "Initial log") {
+		t.Error("Expected response to contain 'Initial log'")
+	}
+
+	if !containsLogMessage(body, "New log while running") {
+		t.Error("Expected response to contain 'New log while running'")
+	}
+}
+
+func TestStreamLogsClosesWhenTaskCompletes(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	task := createTestTaskForHandler(t, database)
+
+	handler := NewTaskHandler(database)
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		database.UpdateTaskStatus(task.ID, models.TaskCompleted)
+	}()
+
+	req := httptest.NewRequest("GET", "/api/tasks/"+task.ID+"/logs/stream", nil)
+	w := httptest.NewRecorder()
+	req.SetPathValue("id", task.ID)
+
+	handler.StreamLogs(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestStreamLogsWithDatabaseError(t *testing.T) {
+	database := setupTestDB(t)
+	database.Close()
+
+	handler := NewTaskHandler(database)
+	req := httptest.NewRequest("GET", "/api/tasks/some-id/logs/stream", nil)
+	w := httptest.NewRecorder()
+	req.SetPathValue("id", "some-id")
+
+	handler.StreamLogs(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode == http.StatusOK {
+		t.Error("Expected error status when database is closed")
+	}
+}
+
+func TestStreamLogsWithMultipleLevels(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	task := createTestTaskForHandler(t, database)
+
+	database.CreateTaskLog(&models.TaskLog{
+		TaskID:   task.ID,
+		LogLevel: models.LogLevelInfo,
+		Message:  "Info message",
+	})
+
+	database.CreateTaskLog(&models.TaskLog{
+		TaskID:   task.ID,
+		LogLevel: models.LogLevelDebug,
+		Message:  "Debug message",
+	})
+
+	database.CreateTaskLog(&models.TaskLog{
+		TaskID:   task.ID,
+		LogLevel: models.LogLevelError,
+		Message:  "Error message",
+	})
+
+	database.UpdateTaskStatus(task.ID, models.TaskCompleted)
+
+	handler := NewTaskHandler(database)
+	req := httptest.NewRequest("GET", "/api/tasks/"+task.ID+"/logs/stream", nil)
+	w := httptest.NewRecorder()
+	req.SetPathValue("id", task.ID)
+
+	handler.StreamLogs(w, req)
+
+	body := w.Body.String()
+
+	if !containsLogMessage(body, "Info message") {
+		t.Error("Expected response to contain 'Info message'")
+	}
+
+	if !containsLogMessage(body, "Debug message") {
+		t.Error("Expected response to contain 'Debug message'")
+	}
+
+	if !containsLogMessage(body, "Error message") {
+		t.Error("Expected response to contain 'Error message'")
+	}
+}

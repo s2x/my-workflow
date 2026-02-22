@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -95,4 +96,60 @@ func TestRunnerWithoutLogWriter(t *testing.T) {
 	if !strings.Contains(result.Output, "test message") {
 		t.Errorf("Expected output to contain 'test message', got: %q", result.Output)
 	}
+}
+
+func TestRunnerHandlesErrorInLogWriter(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("echo", logger)
+	mockWriter := &mockFailingLogWriter{}
+	runner.SetLogWriter(mockWriter)
+
+	taskID := "test-task-error"
+	result := runner.RunWithTaskID("test", "test output", ".", taskID)
+
+	if result.Error != nil {
+		t.Fatalf("Runner should not fail when log writer fails: %v", result.Error)
+	}
+
+	if !strings.Contains(result.Output, "test output") {
+		t.Errorf("Expected output to contain 'test output', got: %q", result.Output)
+	}
+}
+
+func TestRunnerHandlesEmptyOutput(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("echo", logger)
+	mockWriter := &mockLogWriter{}
+	runner.SetLogWriter(mockWriter)
+
+	taskID := "test-task-empty"
+	result := runner.RunWithTaskID("test", "", ".", taskID)
+
+	if result.Error != nil {
+		t.Fatalf("Runner failed: %v", result.Error)
+	}
+}
+
+func TestRunnerHandlesCommandFailure(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("false", logger)
+	mockWriter := &mockLogWriter{}
+	runner.SetLogWriter(mockWriter)
+
+	taskID := "test-task-fail"
+	result := runner.RunWithTaskID("test", "test", ".", taskID)
+
+	if result.Error == nil {
+		t.Error("Expected error for failing command")
+	}
+
+	if result.ExitCode == 0 {
+		t.Error("Expected non-zero exit code")
+	}
+}
+
+type mockFailingLogWriter struct{}
+
+func (m *mockFailingLogWriter) WriteLog(taskID string, level models.LogLevel, message string) error {
+	return fmt.Errorf("mock write failed")
 }
