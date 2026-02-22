@@ -77,6 +77,8 @@ func (db *DB) migrate() error {
 			message   TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id, timestamp)`,
+		`ALTER TABLE projects ADD COLUMN auto_test INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE projects ADD COLUMN auto_review INTEGER NOT NULL DEFAULT 0`,
 	}
 
 	for i, m := range migrations {

@@ -1,0 +1,71 @@
+	github.com/piotr-halas/decodo-workflow/cmd/server		coverage: 0.0% of statements
+=== RUN   TestRunnerWritesLogsLineByLine
+time=2026-02-22T19:45:06.313+01:00 level=INFO msg="running agent" agent=test prompt_len=17 repo=. task_id=test-task-123
+time=2026-02-22T19:45:06.323+01:00 level=INFO msg="agent finished" agent=test exit_code=0 duration=10.178959ms output_len=34
+--- PASS: TestRunnerWritesLogsLineByLine (0.01s)
+=== RUN   TestRunnerCapturesStdoutAndStderr
+time=2026-02-22T19:45:06.324+01:00 level=INFO msg="running agent" agent=test prompt_len=11 repo=. task_id=test-task-456
+time=2026-02-22T19:45:06.332+01:00 level=INFO msg="agent finished" agent=test exit_code=0 duration=8.006583ms output_len=28
+--- PASS: TestRunnerCapturesStdoutAndStderr (0.01s)
+=== RUN   TestRunnerWithoutLogWriter
+time=2026-02-22T19:45:06.332+01:00 level=INFO msg="running agent" agent=test prompt_len=12 repo=. task_id=task-no-writer
+time=2026-02-22T19:45:06.337+01:00 level=INFO msg="agent finished" agent=test exit_code=0 duration=5.203167ms output_len=29
+--- PASS: TestRunnerWithoutLogWriter (0.01s)
+=== RUN   TestRunnerHandlesErrorInLogWriter
+time=2026-02-22T19:45:06.337+01:00 level=INFO msg="running agent" agent=test prompt_len=11 repo=. task_id=test-task-error
+time=2026-02-22T19:45:06.341+01:00 level=ERROR msg="failed to write log" error="mock write failed"
+time=2026-02-22T19:45:06.342+01:00 level=INFO msg="agent finished" agent=test exit_code=0 duration=4.456292ms output_len=28
+--- PASS: TestRunnerHandlesErrorInLogWriter (0.00s)
+=== RUN   TestRunnerHandlesEmptyOutput
+time=2026-02-22T19:45:06.342+01:00 level=INFO msg="running agent" agent=test prompt_len=0 repo=. task_id=test-task-empty
+time=2026-02-22T19:45:06.346+01:00 level=INFO msg="agent finished" agent=test exit_code=0 duration=4.425125ms output_len=16
+--- PASS: TestRunnerHandlesEmptyOutput (0.00s)
+=== RUN   TestRunnerHandlesCommandFailure
+time=2026-02-22T19:45:06.346+01:00 level=INFO msg="running agent" agent=test prompt_len=4 repo=. task_id=test-task-fail
+time=2026-02-22T19:45:06.455+01:00 level=INFO msg="agent finished" agent=test exit_code=1 duration=109.108ms output_len=0
+--- PASS: TestRunnerHandlesCommandFailure (0.11s)
+PASS
+coverage: 57.7% of statements
+ok  	github.com/piotr-halas/decodo-workflow/internal/agent	0.793s	coverage: 57.7% of statements
+	github.com/piotr-halas/decodo-workflow/internal/api		coverage: 0.0% of statements
+=== RUN   TestStreamLogsReturnsSSE
+--- PASS: TestStreamLogsReturnsSSE (0.50s)
+=== RUN   TestStreamLogsReturnsHistoricalLogs
+--- PASS: TestStreamLogsReturnsHistoricalLogs (0.00s)
+=== RUN   TestStreamLogsReturns404ForNonexistentTask
+--- PASS: TestStreamLogsReturns404ForNonexistentTask (0.00s)
+=== RUN   TestStreamLogsHandlesNewLogsWhileRunning
+    tasks_test.go:223: Expected response to contain 'New log while running'
+--- FAIL: TestStreamLogsHandlesNewLogsWhileRunning (0.50s)
+=== RUN   TestStreamLogsClosesWhenTaskCompletes
+--- PASS: TestStreamLogsClosesWhenTaskCompletes (0.50s)
+=== RUN   TestStreamLogsWithDatabaseError
+--- PASS: TestStreamLogsWithDatabaseError (0.00s)
+=== RUN   TestStreamLogsWithMultipleLevels
+--- PASS: TestStreamLogsWithMultipleLevels (0.00s)
+FAIL
+coverage: 13.3% of statements
+FAIL	github.com/piotr-halas/decodo-workflow/internal/api/handlers	2.328s
+	github.com/piotr-halas/decodo-workflow/internal/config		coverage: 0.0% of statements
+=== RUN   TestCreateTaskLog
+--- PASS: TestCreateTaskLog (0.00s)
+=== RUN   TestGetTaskLogs
+--- PASS: TestGetTaskLogs (0.03s)
+=== RUN   TestGetTaskLogsAfter
+--- PASS: TestGetTaskLogsAfter (0.20s)
+=== RUN   TestCreateTaskLogWithEmptyMessage
+--- PASS: TestCreateTaskLogWithEmptyMessage (0.00s)
+=== RUN   TestGetTaskLogsReturnsEmptyForNonexistentTask
+--- PASS: TestGetTaskLogsReturnsEmptyForNonexistentTask (0.00s)
+=== RUN   TestGetTaskLogsAfterReturnsEmptyWhenNone
+--- PASS: TestGetTaskLogsAfterReturnsEmptyWhenNone (0.00s)
+=== RUN   TestTaskLogLevelTypes
+--- PASS: TestTaskLogLevelTypes (0.00s)
+PASS
+coverage: 27.6% of statements
+ok  	github.com/piotr-halas/decodo-workflow/internal/db	1.300s	coverage: 27.6% of statements
+	github.com/piotr-halas/decodo-workflow/internal/integrations/jira		coverage: 0.0% of statements
+?   	github.com/piotr-halas/decodo-workflow/internal/models	[no test files]
+?   	github.com/piotr-halas/decodo-workflow/internal/web	[no test files]
+	github.com/piotr-halas/decodo-workflow/internal/workflow		coverage: 0.0% of statements
+FAIL

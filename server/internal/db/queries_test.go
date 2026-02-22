@@ -274,3 +274,128 @@ func TestTaskLogLevelTypes(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateProjectWithAutoTestAndAutoReview(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:       "test-auto-project",
+		RepoPath:   "/tmp/test",
+		AutoTest:   true,
+		AutoReview: false,
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.AutoTest != true {
+		t.Errorf("Expected AutoTest=true, got %v", retrieved.AutoTest)
+	}
+	if retrieved.AutoReview != false {
+		t.Errorf("Expected AutoReview=false, got %v", retrieved.AutoReview)
+	}
+}
+
+func TestCreateProjectDefaultAutoFlags(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "test-default-project",
+		RepoPath: "/tmp/test",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.AutoTest != false {
+		t.Errorf("Expected AutoTest default=false, got %v", retrieved.AutoTest)
+	}
+	if retrieved.AutoReview != false {
+		t.Errorf("Expected AutoReview default=false, got %v", retrieved.AutoReview)
+	}
+}
+
+func TestUpdateProjectAutoFlags(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:       "test-update-project",
+		RepoPath:   "/tmp/test",
+		AutoTest:   false,
+		AutoReview: false,
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	project.AutoTest = true
+	project.AutoReview = true
+	if err := db.UpdateProject(project); err != nil {
+		t.Fatalf("UpdateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.AutoTest != true {
+		t.Errorf("Expected AutoTest=true after update, got %v", retrieved.AutoTest)
+	}
+	if retrieved.AutoReview != true {
+		t.Errorf("Expected AutoReview=true after update, got %v", retrieved.AutoReview)
+	}
+}
+
+func TestGetProjectsReturnsAutoFlags(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p1 := &models.Project{Name: "p1", RepoPath: "/tmp/p1", AutoTest: true, AutoReview: false}
+	p2 := &models.Project{Name: "p2", RepoPath: "/tmp/p2", AutoTest: false, AutoReview: true}
+
+	db.CreateProject(p1)
+	db.CreateProject(p2)
+
+	projects, err := db.GetProjects()
+	if err != nil {
+		t.Fatalf("GetProjects failed: %v", err)
+	}
+
+	if len(projects) != 2 {
+		t.Fatalf("Expected 2 projects, got %d", len(projects))
+	}
+
+	foundP1, foundP2 := false, false
+	for _, p := range projects {
+		if p.Name == "p1" {
+			foundP1 = true
+			if !p.AutoTest || p.AutoReview {
+				t.Errorf("p1: expected AutoTest=true, AutoReview=false, got %v, %v", p.AutoTest, p.AutoReview)
+			}
+		}
+		if p.Name == "p2" {
+			foundP2 = true
+			if p.AutoTest || !p.AutoReview {
+				t.Errorf("p2: expected AutoTest=false, AutoReview=true, got %v, %v", p.AutoTest, p.AutoReview)
+			}
+		}
+	}
+
+	if !foundP1 || !foundP2 {
+		t.Error("Not all projects found in GetProjects")
+	}
+}

@@ -21,6 +21,8 @@ type CreateProjectRequest struct {
 	RepoPath    string `json:"repo_path"`
 	BaseBranch  string `json:"base_branch"`
 	StageBranch string `json:"stage_branch"`
+	AutoTest    bool   `json:"auto_test"`
+	AutoReview  bool   `json:"auto_review"`
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +41,8 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		RepoPath:    req.RepoPath,
 		BaseBranch:  req.BaseBranch,
 		StageBranch: req.StageBranch,
+		AutoTest:    req.AutoTest,
+		AutoReview:  req.AutoReview,
 	}
 
 	if err := h.db.CreateProject(project); err != nil {
@@ -109,6 +113,8 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.StageBranch != "" {
 		existing.StageBranch = req.StageBranch
 	}
+	existing.AutoTest = req.AutoTest
+	existing.AutoReview = req.AutoReview
 
 	if err := h.db.UpdateProject(existing); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

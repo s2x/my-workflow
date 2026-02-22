@@ -229,6 +229,18 @@ func (e *Engine) afterCode(wf *models.Workflow, ticket *models.Ticket, output st
 	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
 	e.db.UpdateWorkflowBranch(wf.ID, branchName)
 
+	project, _ := e.db.GetProject(wf.ProjectID)
+	if project == nil {
+		e.logger.Error("project not found", "project_id", wf.ProjectID)
+		return
+	}
+
+	if !project.AutoTest {
+		e.chatMsg(wf.ID, "system", "", "Auto-testing disabled, skipping test phase")
+		e.afterTest(wf, ticket, `{"result":"SKIP"}`, pb)
+		return
+	}
+
 	prompt := pb.BuildTestPrompt(ticket, wf.Spec, branchName)
 	testTask := &models.Task{
 		WorkflowID: wf.ID,
@@ -267,6 +279,19 @@ func (e *Engine) afterTest(wf *models.Workflow, ticket *models.Ticket, output st
 		e.db.CreateTask(fixTask)
 		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowCoding, "")
 		e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Tests failed, sending back to coder for fixes (retry %d/%d)", wf.RetryCount+1, maxRetries))
+		return
+	}
+
+	project, _ := e.db.GetProject(wf.ProjectID)
+	if project == nil {
+		e.logger.Error("project not found", "project_id", wf.ProjectID)
+		return
+	}
+
+	if !project.AutoReview {
+		e.chatMsg(wf.ID, "system", "", "Auto-review disabled, skipping review phase")
+		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowAwaitingApproval, "")
+		e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Code is ready for deployment on branch **%s**. Awaiting your approval.", wf.BranchName))
 		return
 	}
 
