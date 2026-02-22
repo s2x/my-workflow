@@ -178,6 +178,33 @@
     </form>
   </div>
 
+  <div id="page-edit-project" class="page hidden">
+    <h2>Edit Project</h2>
+    <form id="edit-project-form" style="max-width:600px" onsubmit="submitEditProject(event)">
+      <div class="form-group">
+        <label>Project Name *</label>
+        <input type="text" id="ep-name" placeholder="My Service" required>
+      </div>
+      <div class="form-group">
+        <label>Repository Path *</label>
+        <input type="text" id="ep-repo" placeholder="/home/user/repos/my-service" required>
+      </div>
+      <div class="form-group">
+        <label>Base Branch</label>
+        <input type="text" id="ep-base" placeholder="main" value="main">
+      </div>
+      <div class="form-group">
+        <label>Stage Branch</label>
+        <input type="text" id="ep-stage" placeholder="stage" value="stage">
+      </div>
+      <div id="edit-project-form-error" class="error-text" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button type="submit" class="btn btn-primary" id="edit-project-submit-btn">Save Changes</button>
+        <button type="button" class="btn btn-ghost" onclick="navigate('projects')">Cancel</button>
+      </div>
+    </form>
+  </div>
+
   <div id="page-project" class="page hidden">
     <div class="section">
       <div class="header-row">
@@ -295,6 +322,10 @@ function updateBreadcrumb() {
 
   if (currentPage === 'projects' || currentPage === 'new-project') {
     parts = [];
+  } else if (currentPage === 'edit-project') {
+    parts = [`<span class="breadcrumb-item" onclick="navigate('projects')">Projects</span>`,
+             `<span class="breadcrumb-sep">/</span>`,
+             `<span class="breadcrumb-current">Edit Project</span>`];
   } else if (currentPage === 'project' || currentPage === 'new-ticket') {
     parts = [`<span class="breadcrumb-item" onclick="navigate('projects')">Projects</span>`,
              `<span class="breadcrumb-sep">/</span>`,
@@ -328,6 +359,10 @@ function navigate(page, param) {
     currentProjectId = param;
     document.getElementById('page-project').classList.remove('hidden');
     loadProject();
+  } else if (page === 'edit-project') {
+    currentProjectId = param;
+    document.getElementById('page-edit-project').classList.remove('hidden');
+    loadEditProject(param);
   } else if (page === 'new-ticket') {
     document.getElementById('page-new-ticket').classList.remove('hidden');
     document.getElementById('ticket-form').reset();
@@ -360,8 +395,8 @@ async function loadProjects() {
       return;
     }
     el.innerHTML = projects.map(p => `
-      <div class="card project-card" onclick="navigate('project','${p.id}')">
-        <div class="card-row">
+      <div class="card project-card">
+        <div class="card-row" onclick="navigate('project','${p.id}')" style="cursor:pointer;flex:1">
           <div>
             <span class="project-name">${p.name}</span>
             <div class="project-path">${p.repo_path}</div>
@@ -372,6 +407,7 @@ async function loadProjects() {
           </div>
           <span class="muted">${new Date(p.created_at).toLocaleDateString()}</span>
         </div>
+        <button class="btn-secondary" style="margin-left:8px" onclick="event.stopPropagation();navigate('edit-project','${p.id}')">Edit</button>
       </div>
     `).join('');
   } catch {}
@@ -398,6 +434,43 @@ async function submitProject(e) {
     document.getElementById('project-form-error').textContent = err.message;
   } finally {
     document.getElementById('project-submit-btn').disabled = false;
+  }
+}
+
+async function loadEditProject(projectId) {
+  try {
+    const project = await api('/projects/' + projectId);
+    document.getElementById('ep-name').value = project.name;
+    document.getElementById('ep-repo').value = project.repo_path;
+    document.getElementById('ep-base').value = project.base_branch;
+    document.getElementById('ep-stage').value = project.stage_branch;
+    document.getElementById('edit-project-form-error').textContent = '';
+  } catch(err) {
+    document.getElementById('edit-project-form-error').textContent = err.message;
+  }
+}
+
+async function submitEditProject(e) {
+  e.preventDefault();
+  const name = document.getElementById('ep-name').value.trim();
+  const repoPath = document.getElementById('ep-repo').value.trim();
+  if (!name || !repoPath) {
+    document.getElementById('edit-project-form-error').textContent = 'Name and repo path are required';
+    return;
+  }
+  document.getElementById('edit-project-submit-btn').disabled = true;
+  try {
+    await api('/projects/' + currentProjectId, { method:'PUT', body: JSON.stringify({
+      name,
+      repo_path: repoPath,
+      base_branch: document.getElementById('ep-base').value || 'main',
+      stage_branch: document.getElementById('ep-stage').value || 'stage'
+    })});
+    navigate('projects');
+  } catch(err) {
+    document.getElementById('edit-project-form-error').textContent = err.message;
+  } finally {
+    document.getElementById('edit-project-submit-btn').disabled = false;
   }
 }
 
