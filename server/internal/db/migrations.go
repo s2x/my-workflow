@@ -9,7 +9,8 @@ func (db *DB) migrate() error {
 			name         TEXT NOT NULL UNIQUE,
 			repo_path    TEXT NOT NULL,
 			base_branch  TEXT NOT NULL DEFAULT 'main',
-			stage_branch TEXT NOT NULL DEFAULT 'stage',
+			auto_test    INTEGER NOT NULL DEFAULT 0,
+			auto_review  INTEGER NOT NULL DEFAULT 0,
 			created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -77,14 +78,32 @@ func (db *DB) migrate() error {
 			message   TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id, timestamp)`,
-		`ALTER TABLE projects ADD COLUMN auto_test INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE projects ADD COLUMN auto_review INTEGER NOT NULL DEFAULT 0`,
 	}
 
 	for i, m := range migrations {
 		if _, err := db.conn.Exec(m); err != nil {
 			return fmt.Errorf("migration %d: %w", i, err)
 		}
+	}
+
+	addColumnIfNotExists := func(table, column, definition string) error {
+		var count int
+		err := db.conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM pragma_table_info('%s') WHERE name='%s'", table, column)).Scan(&count)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			_, err = db.conn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
+			return err
+		}
+		return nil
+	}
+
+	if err := addColumnIfNotExists("projects", "auto_test", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("adding auto_test column: %w", err)
+	}
+	if err := addColumnIfNotExists("projects", "auto_review", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("adding auto_review column: %w", err)
 	}
 
 	return nil

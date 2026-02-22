@@ -63,7 +63,7 @@ func TestWorkflowSkipsTestWhenAutoTestDisabled(t *testing.T) {
 	}
 	database.CreateWorkflow(wf)
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	engine.afterCode(wf, ticket, "", pb)
 
 	wf, _ = database.GetWorkflow(wf.ID)
@@ -95,7 +95,7 @@ func TestWorkflowSkipsReviewWhenAutoReviewDisabled(t *testing.T) {
 	}
 	database.CreateWorkflow(wf)
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	testOutput := `{"result":"PASS"}`
 	engine.afterTest(wf, ticket, testOutput, pb)
 
@@ -128,7 +128,7 @@ func TestWorkflowCreatesTestTaskWhenAutoTestEnabled(t *testing.T) {
 	}
 	database.CreateWorkflow(wf)
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	engine.afterCode(wf, ticket, "", pb)
 
 	wf, _ = database.GetWorkflow(wf.ID)
@@ -168,7 +168,7 @@ func TestWorkflowCreatesReviewTaskWhenAutoReviewEnabled(t *testing.T) {
 	}
 	database.CreateWorkflow(wf)
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	testOutput := `{"result":"PASS"}`
 	engine.afterTest(wf, ticket, testOutput, pb)
 
@@ -209,7 +209,7 @@ func TestWorkflowSkipsBothTestAndReviewWhenDisabled(t *testing.T) {
 	}
 	database.CreateWorkflow(wf)
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	engine.afterCode(wf, ticket, "", pb)
 
 	wf, _ = database.GetWorkflow(wf.ID)
@@ -241,7 +241,7 @@ func TestWorkflowExecutesBothTestAndReviewWhenEnabled(t *testing.T) {
 	}
 	database.CreateWorkflow(wf)
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 
 	engine.afterCode(wf, ticket, "", pb)
 	wf, _ = database.GetWorkflow(wf.ID)
@@ -292,7 +292,7 @@ func TestWorkflowTestFailureRetry(t *testing.T) {
 	}
 	database.CreateWorkflow(wf)
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	testOutput := `{"result":"FAIL","issues":["Test failed"]}`
 	engine.afterTest(wf, ticket, testOutput, pb)
 

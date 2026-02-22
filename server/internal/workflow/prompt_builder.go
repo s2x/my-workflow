@@ -8,12 +8,11 @@ import (
 )
 
 type PromptBuilder struct {
-	baseBranch  string
-	stageBranch string
+	baseBranch string
 }
 
-func NewPromptBuilder(baseBranch, stageBranch string) *PromptBuilder {
-	return &PromptBuilder{baseBranch: baseBranch, stageBranch: stageBranch}
+func NewPromptBuilder(baseBranch string) *PromptBuilder {
+	return &PromptBuilder{baseBranch: baseBranch}
 }
 
 func (pb *PromptBuilder) BuildDescribePrompt(ticket *models.Ticket) string {
@@ -83,7 +82,7 @@ func (pb *PromptBuilder) BuildCodePrompt(ticket *models.Ticket, spec string, sub
 	b.WriteString(fmt.Sprintf("## Specyfikacja techniczna\n%s\n\n", spec))
 	b.WriteString(fmt.Sprintf("## Wytyczne\n"))
 	b.WriteString(fmt.Sprintf("- Branch bazowy: %s\n", pb.baseBranch))
-	b.WriteString(fmt.Sprintf("- Utwórz branch: feature/%s\n", strings.ToLower(ticket.JiraKey)))
+	b.WriteString(fmt.Sprintf("- Utwórz branch: feature/%s z brancha %s\n", strings.ToLower(ticket.JiraKey), pb.baseBranch))
 	b.WriteString("- Commituj zmiany z opisowym komunikatem\n")
 	b.WriteString("- Napisz unit testy dla swoich zmian\n")
 	b.WriteString("- Uruchom testy przed zakończeniem\n")
@@ -148,14 +147,14 @@ func (pb *PromptBuilder) BuildReviewPrompt(ticket *models.Ticket, branchName str
 
 func (pb *PromptBuilder) BuildDeployPrompt(branchName string) string {
 	var b strings.Builder
-	b.WriteString("Wdróż zmiany na środowisko staging.\n\n")
+	b.WriteString("Wdróż zmiany do głównego brancha.\n\n")
 	b.WriteString(fmt.Sprintf("## Branch źródłowy: %s\n", branchName))
-	b.WriteString(fmt.Sprintf("## Branch docelowy: %s\n\n", pb.stageBranch))
+	b.WriteString(fmt.Sprintf("## Branch docelowy: %s\n\n", pb.baseBranch))
 	b.WriteString("## Instrukcje\n")
-	b.WriteString(fmt.Sprintf("1. git checkout %s\n", pb.stageBranch))
+	b.WriteString(fmt.Sprintf("1. git checkout %s\n", pb.baseBranch))
 	b.WriteString("2. git pull origin\n")
 	b.WriteString(fmt.Sprintf("3. git merge %s\n", branchName))
-	b.WriteString(fmt.Sprintf("4. git push origin %s\n", pb.stageBranch))
+	b.WriteString(fmt.Sprintf("4. git push origin %s\n", pb.baseBranch))
 	b.WriteString("5. Sprawdź czy merge przeszedł bez konfliktów\n\n")
 	b.WriteString("Odpowiedz w JSON:\n")
 	b.WriteString(`{

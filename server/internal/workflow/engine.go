@@ -50,7 +50,7 @@ func (e *Engine) StartWorkflow(project *models.Project, ticket *models.Ticket) (
 
 	e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Workflow started for ticket %s: %s", ticket.JiraKey, ticket.Summary))
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	prompt := pb.BuildDescribePrompt(ticket)
 	task := &models.Task{
 		WorkflowID: wf.ID,
@@ -149,7 +149,7 @@ func (e *Engine) handleTaskCompletion(task models.Task, output string) {
 		return
 	}
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 
 	if task.ParentTaskID != "" {
 		e.handleSubtaskCompletion(task)
@@ -431,7 +431,7 @@ func (e *Engine) ApproveDeployment(workflowID string) error {
 		return fmt.Errorf("project not found for workflow")
 	}
 
-	pb := NewPromptBuilder(project.BaseBranch, project.StageBranch)
+	pb := NewPromptBuilder(project.BaseBranch)
 	prompt := pb.BuildDeployPrompt(wf.BranchName)
 	deployTask := &models.Task{
 		WorkflowID: wf.ID,
