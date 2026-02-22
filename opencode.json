@@ -1,0 +1,80 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "descriptor": {
+      "mode": "subagent",
+      "description": "Analyzes tickets and creates technical specifications with subtask decomposition",
+      "model": "anthropic/claude-opus-4-20250514",
+      "tools": {
+        "write": false,
+        "edit": false
+      },
+      "permission": {
+        "bash": {
+          "*": "deny",
+          "find *": "allow",
+          "ls *": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tree *": "allow"
+        }
+      }
+    },
+    "coder": {
+      "mode": "subagent",
+      "description": "Implements code changes, creates branches, writes unit tests",
+      "model": "nexos-ai/Claude Opus 4.6",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow"
+      }
+    },
+    "tester": {
+      "mode": "subagent",
+      "description": "Runs test suites, checks coverage, writes additional tests",
+      "model": "anthropic/claude-sonnet-4-20250514",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow"
+      }
+    },
+    "reviewer": {
+      "mode": "subagent",
+      "description": "Reviews code for quality, security, and performance",
+      "model": "google/gemini-2.5-pro",
+      "tools": {
+        "write": false,
+        "edit": false
+      },
+      "permission": {
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "cat *": "allow",
+          "find *": "allow"
+        }
+      }
+    },
+    "deployer": {
+      "mode": "subagent",
+      "description": "Deploys code to staging branch via git merge",
+      "model": "google/gemini-2.5-flash",
+      "tools": {
+        "write": false,
+        "edit": false
+      },
+      "permission": {
+        "bash": {
+          "*": "deny",
+          "git checkout*": "allow",
+          "git pull*": "allow",
+          "git merge*": "allow",
+          "git push*": "allow",
+          "git status*": "allow"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decodo Workflow</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0f1117; --card: #1a1d27; --card-hover: #222531;
+      --border: #2a2d3a; --fg: #e4e4e7; --muted: #71717a;
+      --primary: #6366f1; --primary-hover: #818cf8;
+      --success: #22c55e; --warning: #f59e0b; --danger: #ef4444;
+    }
+    body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
+    a { color: var(--primary); text-decoration: none; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    nav { border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 24px; }
+    nav .logo { font-size: 18px; font-weight: 700; color: var(--primary); cursor: pointer; }
+    nav a { color: var(--muted); font-size: 13px; cursor: pointer; }
+    nav a:hover { color: var(--fg); }
+    #nav-breadcrumb { display: flex; align-items: center; gap: 8px; }
+    .breadcrumb-sep { color: var(--muted); font-size: 12px; }
+    .breadcrumb-item { color: var(--muted); font-size: 13px; cursor: pointer; }
+    .breadcrumb-item:hover { color: var(--fg); }
+    .breadcrumb-current { color: var(--fg); font-size: 13px; font-weight: 500; }
+
+    .page { padding: 24px 0; }
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+    .section { margin-bottom: 32px; }
+    .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .muted { color: var(--muted); font-size: 12px; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 8px; }
+    .card:hover { background: var(--card-hover); }
+    .card-row { display: flex; align-items: center; justify-content: space-between; }
+    .card-left { display: flex; align-items: center; gap: 10px; }
+
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: monospace; color: white; }
+    .badge-zinc { background: #52525b; }
+    .badge-blue { background: #2563eb; }
+    .badge-purple { background: #7c3aed; }
+    .badge-yellow { background: #ca8a04; }
+    .badge-orange { background: #ea580c; }
+    .badge-cyan { background: #0891b2; }
+    .badge-indigo { background: #4f46e5; }
+    .badge-green { background: #16a34a; }
+    .badge-red { background: #dc2626; }
+
+    .btn { padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; border: none; transition: background 0.15s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-green { background: var(--success); color: white; }
+    .btn-green:hover { background: #16a34a; }
+    .btn-red { background: var(--danger); color: white; }
+    .btn-red:hover { background: #dc2626; }
+    .btn-ghost { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--card-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%; background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 12px; color: var(--fg); font-size: 13px;
+      outline: none; font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus { border-color: var(--primary); }
+    .form-group textarea { font-family: monospace; resize: vertical; }
+
+    .timeline { display: flex; gap: 4px; margin-bottom: 20px; }
+    .timeline-step { flex: 1; display: flex; align-items: center; gap: 4px; }
+    .timeline-bar { flex: 1; height: 6px; border-radius: 3px; background: #3f3f46; transition: background 0.3s; }
+    .timeline-bar.done { background: var(--success); }
+    .timeline-bar.active { background: var(--primary); animation: pulse 1.5s infinite; }
+    .timeline-bar.failed { background: var(--danger); }
+    .timeline-label { font-size: 9px; white-space: nowrap; color: #52525b; }
+    .timeline-label.done { color: var(--success); }
+    .timeline-label.active { color: var(--primary); }
+    .timeline-label.failed { color: var(--danger); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .chat-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; max-height: 500px; overflow-y: auto; }
+    .chat-msg { margin-bottom: 12px; }
+    .chat-msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+    .chat-msg-role { font-size: 11px; font-weight: 600; }
+    .chat-msg-time { font-size: 9px; color: #52525b; }
+    .chat-msg-text { font-size: 12px; color: #a1a1aa; line-height: 1.5; }
+    .role-system { color: #52525b; }
+    .role-user { color: var(--success); }
+    .role-descriptor { color: #60a5fa; }
+    .role-coder { color: #a78bfa; }
+    .role-tester { color: #fbbf24; }
+    .role-reviewer { color: #fb923c; }
+    .role-deployer { color: #818cf8; }
+
+    .task-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 6px; }
+    .task-row { display: flex; align-items: center; justify-content: space-between; }
+    .task-left { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-queued { background: #52525b; }
+    .dot-running { background: var(--primary); animation: pulse 1.5s infinite; }
+    .dot-completed { background: var(--success); }
+    .dot-failed { background: var(--danger); }
+    .subtask-label { font-size: 9px; color: #52525b; margin-left: 16px; }
+    .error-text { font-size: 10px; color: var(--danger); margin-top: 4px; }
+    .desc-text { font-size: 11px; color: var(--muted); margin-top: 6px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+    .approval-bar { background: rgba(8,145,178,0.15); border: 1px solid #155e75; border-radius: 8px; padding: 16px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .approval-bar p { font-size: 13px; color: #67e8f9; }
+    .approval-btns { display: flex; gap: 8px; }
+
+    .logs-section { margin-top: 24px; }
+    .logs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .logs-header h3 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .logs-controls { display: flex; gap: 8px; align-items: center; }
+    .logs-container { background: #0a0a0f; border: 1px solid var(--border); border-radius: 8px; padding: 16px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px; }
+    .log-line { margin: 2px 0; display: flex; gap: 8px; }
+    .log-time { color: #52525b; min-width: 65px; }
+    .log-level { min-width: 50px; font-weight: 600; }
+    .log-level-info { color: #60a5fa; }
+    .log-level-debug { color: #a78bfa; }
+    .log-level-error { color: #f87171; }
+    .log-message { color: #d4d4d8; flex: 1; word-break: break-word; }
+
+    .empty { color: var(--muted); font-size: 12px; }
+    .mono { font-family: monospace; }
+    .hidden { display: none; }
+
+    .project-card { cursor: pointer; }
+    .project-card .project-name { font-size: 15px; font-weight: 600; }
+    .project-card .project-path { font-size: 11px; color: var(--muted); font-family: monospace; margin-top: 4px; }
+    .project-card .project-meta { display: flex; gap: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="logo" onclick="navigate('projects')">Decodo</span>
+  <div id="nav-breadcrumb"></div>
+</nav>
+
+<div class="container">
+  <div id="page-projects" class="page">
+    <div class="header-row">
+      <h2>Projects</h2>
+      <button class="btn btn-primary" onclick="navigate('new-project')">+ New Project</button>
+    </div>
+    <div id="project-list"></div>
+  </div>
+
+  <div id="page-new-project" class="page hidden">
+    <h2>Create Project</h2>
+    <form id="project-form" style="max-width:600px" onsubmit="submitProject(event)">
+      <div class="form-group">
+        <label>Name *</label>
+        <input type="text" id="fp-name" placeholder="my-service" required>
+      </div>
+      <div class="form-group">
+        <label>Repository Path *</label>
+        <input type="text" id="fp-repo" placeholder="/home/user/repos/my-service" required>
+      </div>
+      <div class="form-group">
+        <label>Base Branch</label>
+        <input type="text" id="fp-base" placeholder="main" value="main">
+      </div>
+      <div class="form-group">
+        <label>Stage Branch</label>
+        <input type="text" id="fp-stage" placeholder="stage" value="stage">
+      </div>
+      <div id="project-form-error" class="error-text" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button type="submit" class="btn btn-primary" id="project-submit-btn">Create Project</button>
+        <button type="button" class="btn btn-ghost" onclick="navigate('projects')">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="page-project" class="page hidden">
+    <div class="section">
+      <div class="header-row">
+        <h2>Workflows</h2>
+        <span class="muted" id="wf-count"></span>
+      </div>
+      <div id="wf-list"></div>
+    </div>
+    <div class="section">
+      <div class="header-row">
+        <h2>Tickets</h2>
+        <button class="btn btn-primary" onclick="navigate('new-ticket')">+ New Ticket</button>
+      </div>
+      <div id="ticket-list"></div>
+    </div>
+  </div>
+
+  <div id="page-new-ticket" class="page hidden">
+    <h2>Create Ticket</h2>
+    <form id="ticket-form" style="max-width:600px" onsubmit="submitTicket(event)">
+      <div class="form-group">
+        <label>Summary *</label>
+        <input type="text" id="f-summary" placeholder="Brief description of the task" required>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="f-description" rows="6" placeholder="Detailed description..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Acceptance Criteria</label>
+        <textarea id="f-ac" rows="4" placeholder="- Criterion 1&#10;- Criterion 2"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Priority</label>
+        <select id="f-priority">
+          <option value="Low">Low</option>
+          <option value="Medium" selected>Medium</option>
+          <option value="High">High</option>
+          <option value="Critical">Critical</option>
+        </select>
+      </div>
+      <div id="form-error" class="error-text" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button type="submit" class="btn btn-primary" id="submit-btn">Create Ticket</button>
+        <button type="button" class="btn btn-ghost" onclick="navigate('project', currentProjectId)">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="page-workflow" class="page hidden">
+    <div class="header-row">
+      <h2 id="wf-title" class="mono"></h2>
+      <span id="wf-branch" class="muted mono"></span>
+    </div>
+    <div id="wf-timeline" class="timeline"></div>
+    <div id="wf-error"></div>
+    <div id="wf-approval" class="approval-bar hidden">
+      <p>Code is ready. Approve deployment to staging?</p>
+      <div class="approval-btns">
+        <button class="btn btn-green" onclick="approveWf()">Approve</button>
+        <button class="btn btn-red" onclick="rejectWf()">Reject</button>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h2 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Chat</h2>
+        <div id="wf-chat" class="chat-box"></div>
+      </div>
+      <div>
+        <h2 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Tasks</h2>
+        <div id="wf-tasks"></div>
+      </div>
+    </div>
+    <div id="wf-logs-section" class="logs-section hidden">
+      <div class="logs-header">
+        <h3>Task Logs</h3>
+        <div class="logs-controls">
+          <button class="btn btn-ghost" onclick="toggleAutoScroll()" id="autoscroll-btn">Auto-scroll: ON</button>
+          <button class="btn btn-ghost" onclick="closeLogs()">Close</button>
+        </div>
+      </div>
+      <div id="wf-logs" class="logs-container"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const STATUS_BADGE = {
+  CREATED:'badge-zinc', DESCRIBING:'badge-blue', CODING:'badge-purple',
+  TESTING:'badge-yellow', REVIEWING:'badge-orange', AWAITING_APPROVAL:'badge-cyan',
+  DEPLOYING:'badge-indigo', DONE:'badge-green', FAILED:'badge-red'
+};
+const STEPS = ['Created','Describing','Coding','Testing','Reviewing','Approval','Deploying','Done'];
+const STATUS_STEP = {CREATED:0,DESCRIBING:1,CODING:2,TESTING:3,REVIEWING:4,AWAITING_APPROVAL:5,DEPLOYING:6,DONE:7,FAILED:-1};
+const AGENT_ROLE_CLASS = {descriptor:'role-descriptor',coder:'role-coder',tester:'role-tester',reviewer:'role-reviewer',deployer:'role-deployer'};
+
+let currentPage = 'projects';
+let currentProjectId = '';
+let currentProjectName = '';
+let currentWfId = '';
+let pollTimer = null;
+let logEventSource = null;
+let autoScroll = true;
+let currentLogTaskId = null;
+
+async function api(path, opts) {
+  const r = await fetch('/api' + path, { headers: {'Content-Type':'application/json'}, ...opts });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function updateBreadcrumb() {
+  const el = document.getElementById('nav-breadcrumb');
+  let parts = [];
+
+  if (currentPage === 'projects' || currentPage === 'new-project') {
+    parts = [];
+  } else if (currentPage === 'project' || currentPage === 'new-ticket') {
+    parts = [`<span class="breadcrumb-item" onclick="navigate('projects')">Projects</span>`,
+             `<span class="breadcrumb-sep">/</span>`,
+             `<span class="breadcrumb-current">${currentProjectName}</span>`];
+  } else if (currentPage === 'workflow') {
+    parts = [`<span class="breadcrumb-item" onclick="navigate('projects')">Projects</span>`,
+             `<span class="breadcrumb-sep">/</span>`,
+             `<span class="breadcrumb-item" onclick="navigate('project','${currentProjectId}')">${currentProjectName}</span>`,
+             `<span class="breadcrumb-sep">/</span>`,
+             `<span class="breadcrumb-current">Workflow ${currentWfId.slice(0,8)}</span>`];
+  }
+  el.innerHTML = parts.join('');
+}
+
+function navigate(page, param) {
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  currentPage = page;
+
+  if (page === 'projects') {
+    currentProjectId = '';
+    currentProjectName = '';
+    document.getElementById('page-projects').classList.remove('hidden');
+    loadProjects();
+  } else if (page === 'new-project') {
+    document.getElementById('page-new-project').classList.remove('hidden');
+    document.getElementById('project-form').reset();
+    document.getElementById('fp-base').value = 'main';
+    document.getElementById('fp-stage').value = 'stage';
+    document.getElementById('project-form-error').textContent = '';
+  } else if (page === 'project') {
+    currentProjectId = param;
+    document.getElementById('page-project').classList.remove('hidden');
+    loadProject();
+  } else if (page === 'new-ticket') {
+    document.getElementById('page-new-ticket').classList.remove('hidden');
+    document.getElementById('ticket-form').reset();
+    document.getElementById('form-error').textContent = '';
+  } else if (page === 'workflow') {
+    currentWfId = param;
+    document.getElementById('page-workflow').classList.remove('hidden');
+    loadWorkflow();
+  }
+
+  updateBreadcrumb();
+  startPoll();
+}
+
+function startPoll() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => {
+    if (currentPage === 'projects') loadProjects();
+    else if (currentPage === 'project') loadProject();
+    else if (currentPage === 'workflow') loadWorkflow();
+  }, 4000);
+}
+
+async function loadProjects() {
+  try {
+    const projects = await api('/projects');
+    const el = document.getElementById('project-list');
+    if (!projects.length) {
+      el.innerHTML = '<p class="empty">No projects yet. Create one to get started.</p>';
+      return;
+    }
+    el.innerHTML = projects.map(p => `
+      <div class="card project-card" onclick="navigate('project','${p.id}')">
+        <div class="card-row">
+          <div>
+            <span class="project-name">${p.name}</span>
+            <div class="project-path">${p.repo_path}</div>
+            <div class="project-meta">
+              <span class="muted">base: ${p.base_branch}</span>
+              <span class="muted">stage: ${p.stage_branch}</span>
+            </div>
+          </div>
+          <span class="muted">${new Date(p.created_at).toLocaleDateString()}</span>
+        </div>
+      </div>
+    `).join('');
+  } catch {}
+}
+
+async function submitProject(e) {
+  e.preventDefault();
+  const name = document.getElementById('fp-name').value.trim();
+  const repoPath = document.getElementById('fp-repo').value.trim();
+  if (!name || !repoPath) {
+    document.getElementById('project-form-error').textContent = 'Name and repo path are required';
+    return;
+  }
+  document.getElementById('project-submit-btn').disabled = true;
+  try {
+    const project = await api('/projects', { method:'POST', body: JSON.stringify({
+      name,
+      repo_path: repoPath,
+      base_branch: document.getElementById('fp-base').value || 'main',
+      stage_branch: document.getElementById('fp-stage').value || 'stage'
+    })});
+    navigate('project', project.id);
+  } catch(err) {
+    document.getElementById('project-form-error').textContent = err.message;
+  } finally {
+    document.getElementById('project-submit-btn').disabled = false;
+  }
+}
+
+async function loadProject() {
+  try {
+    const [project, tickets, workflows] = await Promise.all([
+      api('/projects/' + currentProjectId),
+      api('/projects/' + currentProjectId + '/tickets'),
+      api('/projects/' + currentProjectId + '/workflows')
+    ]);
+    currentProjectName = project.name;
+    updateBreadcrumb();
+
+    document.getElementById('wf-count').textContent = workflows.length + ' total';
+    const wfEl = document.getElementById('wf-list');
+    if (!workflows.length) {
+      wfEl.innerHTML = '<p class="empty">No workflows yet. Start one from a ticket below.</p>';
+    } else {
+      wfEl.innerHTML = workflows.map(wf => `
+        <div class="card" style="cursor:pointer" onclick="navigate('workflow','${wf.id}')">
+          <div class="card-row">
+            <div class="card-left">
+              <span class="badge ${STATUS_BADGE[wf.status]||'badge-zinc'}">${wf.status}</span>
+              <span class="muted mono">${wf.id.slice(0,8)}</span>
+              ${wf.branch_name ? `<span class="muted mono" style="font-size:11px">${wf.branch_name}</span>` : ''}
+            </div>
+            <span class="muted">${new Date(wf.created_at).toLocaleString()}</span>
+          </div>
+          ${wf.error ? `<div class="error-text" style="margin-top:8px">${wf.error}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    const tEl = document.getElementById('ticket-list');
+    if (!tickets.length) {
+      tEl.innerHTML = '<p class="empty">No tickets yet. Create one to get started.</p>';
+    } else {
+      tEl.innerHTML = tickets.map(t => {
+        const has = workflows.some(w => w.ticket_id === t.id);
+        return `
+          <div class="card">
+            <div class="card-row">
+              <div>
+                <span class="mono" style="color:var(--primary);font-size:12px;margin-right:8px">${t.jira_key}</span>
+                <span style="font-size:13px">${t.summary}</span>
+              </div>
+              <div class="card-left">
+                <span class="badge badge-zinc">${t.source}</span>
+                ${t.priority ? `<span class="badge badge-zinc">${t.priority}</span>` : ''}
+                ${!has
+                  ? `<button class="btn btn-primary" onclick="startWorkflow('${t.id}')">Start Workflow</button>`
+                  : `<span style="color:var(--success);font-size:12px">Workflow active</span>`}
+              </div>
+            </div>
+            ${t.description ? `<div class="desc-text">${t.description}</div>` : ''}
+          </div>`;
+      }).join('');
+    }
+  } catch {}
+}
+
+async function startWorkflow(ticketId) {
+  await api('/projects/' + currentProjectId + '/workflows', { method:'POST', body: JSON.stringify({ticket_id:ticketId}) });
+  loadProject();
+}
+
+async function submitTicket(e) {
+  e.preventDefault();
+  const summary = document.getElementById('f-summary').value.trim();
+  if (!summary) { document.getElementById('form-error').textContent = 'Summary is required'; return; }
+  document.getElementById('submit-btn').disabled = true;
+  try {
+    await api('/projects/' + currentProjectId + '/tickets', { method:'POST', body: JSON.stringify({
+      summary,
+      description: document.getElementById('f-description').value,
+      acceptance_criteria: document.getElementById('f-ac').value,
+      priority: document.getElementById('f-priority').value
+    })});
+    navigate('project', currentProjectId);
+  } catch(err) {
+    document.getElementById('form-error').textContent = err.message;
+  } finally {
+    document.getElementById('submit-btn').disabled = false;
+  }
+}
+
+async function loadWorkflow() {
+  try {
+    const [wf, tasks, msgs] = await Promise.all([
+      api('/workflows/' + currentWfId),
+      api('/workflows/' + currentWfId + '/tasks'),
+      api('/workflows/' + currentWfId + '/chat')
+    ]);
+    renderWorkflow(wf, tasks, msgs);
+  } catch {}
+}
+
+function renderWorkflow(wf, tasks, msgs) {
+  document.getElementById('wf-title').textContent = 'Workflow ' + wf.id.slice(0,8);
+  document.getElementById('wf-branch').textContent = wf.branch_name || '';
+
+  const step = STATUS_STEP[wf.status] ?? 0;
+  const failed = wf.status === 'FAILED';
+  document.getElementById('wf-timeline').innerHTML = STEPS.map((s,i) => {
+    const done = i < step && !failed;
+    const active = i === step && !failed;
+    const fail = failed && i === step;
+    const cls = done ? 'done' : active ? 'active' : fail ? 'failed' : '';
+    return `<div class="timeline-step"><div class="timeline-bar ${cls}"></div><span class="timeline-label ${cls}">${s}</span></div>`;
+  }).join('');
+
+  document.getElementById('wf-error').innerHTML = wf.error
+    ? `<div style="background:rgba(220,38,38,0.1);border:1px solid #7f1d1d;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#fca5a5">${wf.error}</div>` : '';
+
+  const appr = document.getElementById('wf-approval');
+  if (wf.status === 'AWAITING_APPROVAL') appr.classList.remove('hidden');
+  else appr.classList.add('hidden');
+
+  const chatEl = document.getElementById('wf-chat');
+  if (!msgs.length) chatEl.innerHTML = '<p class="empty">No messages yet.</p>';
+  else {
+    chatEl.innerHTML = msgs.map(m => {
+      const roleClass = m.role === 'system' ? 'role-system' : m.role === 'user' ? 'role-user' : (AGENT_ROLE_CLASS[m.agent_type] || 'muted');
+      const name = m.role === 'agent' ? m.agent_type : m.role;
+      return `<div class="chat-msg"><div class="chat-msg-header"><span class="chat-msg-role ${roleClass}">${name}</span><span class="chat-msg-time">${new Date(m.created_at).toLocaleTimeString()}</span></div><div class="chat-msg-text">${m.content}</div></div>`;
+    }).join('');
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  const taskEl = document.getElementById('wf-tasks');
+  if (!tasks.length) taskEl.innerHTML = '<p class="empty">No tasks yet.</p>';
+  else {
+    taskEl.innerHTML = tasks.map(t => `
+      <div class="task-item" onclick="showTaskLogs('${t.id}')" style="cursor:pointer">
+        <div class="task-row">
+          <div class="task-left">
+            <div class="dot dot-${t.status.toLowerCase()}"></div>
+            <span class="mono" style="font-size:12px">${t.type}</span>
+            <span class="${AGENT_ROLE_CLASS[t.agent]||'muted'}" style="font-size:12px">${t.agent}</span>
+          </div>
+          <span class="muted">${t.status}</span>
+        </div>
+        ${t.parent_task_id ? `<div class="subtask-label">subtask of ${t.parent_task_id.slice(0,8)}</div>` : ''}
+        ${t.error ? `<div class="error-text">${t.error}</div>` : ''}
+      </div>
+    `).join('');
+  }
+}
+
+async function approveWf() { await api('/workflows/' + currentWfId + '/approve', {method:'POST'}); loadWorkflow(); }
+async function rejectWf() { await api('/workflows/' + currentWfId + '/reject', {method:'POST'}); loadWorkflow(); }
+
+function showTaskLogs(taskId) {
+  currentLogTaskId = taskId;
+  document.getElementById('wf-logs-section').classList.remove('hidden');
+  document.getElementById('wf-logs').innerHTML = '<p class="empty">Loading logs...</p>';
+  
+  if (logEventSource) {
+    logEventSource.close();
+  }
+
+  logEventSource = new EventSource('/api/tasks/' + taskId + '/logs/stream');
+  
+  logEventSource.onmessage = function(event) {
+    const log = JSON.parse(event.data);
+    const logsEl = document.getElementById('wf-logs');
+    
+    if (logsEl.querySelector('.empty')) {
+      logsEl.innerHTML = '';
+    }
+    
+    const time = new Date(log.timestamp).toLocaleTimeString();
+    const logLine = document.createElement('div');
+    logLine.className = 'log-line';
+    logLine.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-level log-level-${log.log_level}">${log.log_level.toUpperCase()}</span>
+      <span class="log-message">${escapeHtml(log.message)}</span>
+    `;
+    logsEl.appendChild(logLine);
+    
+    if (autoScroll) {
+      logsEl.scrollTop = logsEl.scrollHeight;
+    }
+  };
+
+  logEventSource.onerror = function() {
+    logEventSource.close();
+  };
+}
+
+function closeLogs() {
+  document.getElementById('wf-logs-section').classList.add('hidden');
+  if (logEventSource) {
+    logEventSource.close();
+    logEventSource = null;
+  }
+  currentLogTaskId = null;
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  document.getElementById('autoscroll-btn').textContent = 'Auto-scroll: ' + (autoScroll ? 'ON' : 'OFF');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+navigate('projects');
+</script>
+</body>
+</html>
