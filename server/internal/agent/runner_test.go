@@ -31,7 +31,7 @@ func (m *mockLogWriter) WriteLog(taskID string, level models.LogLevel, message s
 
 func TestRunnerWritesLogsLineByLine(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	runner := NewRunner("echo", logger)
+	runner := NewRunner("qwen", "echo", logger)
 	mockWriter := &mockLogWriter{}
 	runner.SetLogWriter(mockWriter)
 
@@ -55,7 +55,7 @@ func TestRunnerWritesLogsLineByLine(t *testing.T) {
 
 func TestRunnerCapturesStdoutAndStderr(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	runner := NewRunner("echo", logger)
+	runner := NewRunner("qwen", "echo", logger)
 	mockWriter := &mockLogWriter{}
 	runner.SetLogWriter(mockWriter)
 
@@ -85,7 +85,7 @@ func TestRunnerCapturesStdoutAndStderr(t *testing.T) {
 
 func TestRunnerWithoutLogWriter(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	runner := NewRunner("echo", logger)
+	runner := NewRunner("qwen", "echo", logger)
 
 	result := runner.RunWithTaskID("test", "test message", ".", "task-no-writer")
 
@@ -100,7 +100,7 @@ func TestRunnerWithoutLogWriter(t *testing.T) {
 
 func TestRunnerHandlesErrorInLogWriter(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	runner := NewRunner("echo", logger)
+	runner := NewRunner("qwen", "echo", logger)
 	mockWriter := &mockFailingLogWriter{}
 	runner.SetLogWriter(mockWriter)
 
@@ -118,7 +118,7 @@ func TestRunnerHandlesErrorInLogWriter(t *testing.T) {
 
 func TestRunnerHandlesEmptyOutput(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	runner := NewRunner("echo", logger)
+	runner := NewRunner("qwen", "echo", logger)
 	mockWriter := &mockLogWriter{}
 	runner.SetLogWriter(mockWriter)
 
@@ -132,7 +132,7 @@ func TestRunnerHandlesEmptyOutput(t *testing.T) {
 
 func TestRunnerHandlesCommandFailure(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	runner := NewRunner("false", logger)
+	runner := NewRunner("qwen", "false", logger)
 	mockWriter := &mockLogWriter{}
 	runner.SetLogWriter(mockWriter)
 

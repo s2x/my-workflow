@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -22,12 +23,21 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
+	var portFlag int
+	flag.IntVar(&portFlag, "port", 0, "Server port (overrides SERVER_PORT env var)")
+	flag.Parse()
+
 	_ = godotenv.Load()
 
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("failed to load config", "error", err)
 		os.Exit(1)
+	}
+
+	// Override port if provided via CLI flag
+	if portFlag != 0 {
+		cfg.ServerPort = portFlag
 	}
 
 	database, err := db.New(cfg.DBPath)
@@ -48,7 +58,7 @@ func main() {
 		}
 	}
 
-	runner := agent.NewRunner(cfg.OpencodeBin, logger)
+	runner := agent.NewRunner(cfg.OpencodeBin, cfg.QwenBin, logger)
 	engine := workflow.NewEngine(database, runner, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())

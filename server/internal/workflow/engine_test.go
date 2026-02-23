@@ -16,7 +16,7 @@ func setupTestEngine(t *testing.T) (*Engine, *db.DB) {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
 
-	runner := agent.NewRunner("opencode", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	engine := NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
 	return engine, database

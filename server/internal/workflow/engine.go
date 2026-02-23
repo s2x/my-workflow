@@ -113,7 +113,7 @@ func (e *Engine) processTask(task models.Task) {
 		return
 	}
 
-	result := e.runner.RunWithTaskID(task.Agent, task.Prompt, project.RepoPath, task.ID)
+	result := e.runner.RunWithTaskIDAndRunner(task.Agent, task.Prompt, project.RepoPath, task.ID, project.Runner)
 
 	if result.Error != nil {
 		e.logger.Error("agent failed", "agent", task.Agent, "error", result.Error)

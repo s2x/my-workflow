@@ -15,6 +15,7 @@ type Config struct {
 	DBPath           string
 	ServerPort       int
 	OpencodeBin      string
+	QwenBin          string
 }
 
 func Load() (*Config, error) {
@@ -23,8 +24,9 @@ func Load() (*Config, error) {
 		JiraToken:   getEnv("JIRA_TOKEN", ""),
 		JiraEmail:   getEnv("JIRA_EMAIL", ""),
 		DBPath:      getEnv("DB_PATH", "decodo.db"),
-		ServerPort:  getEnvInt("SERVER_PORT", 8080),
+		ServerPort:  getEnvInt("SERVER_PORT", 3000),
 		OpencodeBin: getEnv("OPENCODE_BIN", "opencode"),
+		QwenBin:     getEnv("QWEN_BIN", "qwen"),
 	}
 
 	interval := getEnvInt("JIRA_SYNC_INTERVAL_MIN", 10)

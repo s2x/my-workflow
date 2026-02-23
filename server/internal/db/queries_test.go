@@ -360,6 +360,119 @@ func TestUpdateProjectAutoFlags(t *testing.T) {
 	}
 }
 
+func TestCreateProjectDefaultRunner(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "test-default-runner-project",
+		RepoPath: "/tmp/test",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.Runner != "qwen" {
+		t.Errorf("Expected Runner default='qwen', got %q", retrieved.Runner)
+	}
+}
+
+func TestCreateProjectWithRunner(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "test-opencode-runner-project",
+		RepoPath: "/tmp/test",
+		Runner:   "opencode",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.Runner != "opencode" {
+		t.Errorf("Expected Runner='opencode', got %q", retrieved.Runner)
+	}
+}
+
+func TestUpdateProjectRunner(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "test-update-runner-project",
+		RepoPath: "/tmp/test",
+		Runner:   "qwen",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	project.Runner = "opencode"
+	if err := db.UpdateProject(project); err != nil {
+		t.Fatalf("UpdateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.Runner != "opencode" {
+		t.Errorf("Expected Runner='opencode' after update, got %q", retrieved.Runner)
+	}
+}
+
+func TestGetProjectsReturnsRunner(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p1 := &models.Project{Name: "runner-p1", RepoPath: "/tmp/p1", Runner: "opencode"}
+	p2 := &models.Project{Name: "runner-p2", RepoPath: "/tmp/p2", Runner: "qwen"}
+
+	db.CreateProject(p1)
+	db.CreateProject(p2)
+
+	projects, err := db.GetProjects()
+	if err != nil {
+		t.Fatalf("GetProjects failed: %v", err)
+	}
+
+	if len(projects) != 2 {
+		t.Fatalf("Expected 2 projects, got %d", len(projects))
+	}
+
+	foundP1, foundP2 := false, false
+	for _, p := range projects {
+		if p.Name == "runner-p1" {
+			foundP1 = true
+			if p.Runner != "opencode" {
+				t.Errorf("runner-p1: expected Runner='opencode', got %q", p.Runner)
+			}
+		}
+		if p.Name == "runner-p2" {
+			foundP2 = true
+			if p.Runner != "qwen" {
+				t.Errorf("runner-p2: expected Runner='qwen', got %q", p.Runner)
+			}
+		}
+	}
+
+	if !foundP1 || !foundP2 {
+		t.Error("Not all projects found in GetProjects")
+	}
+}
+
 func TestGetProjectsReturnsAutoFlags(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

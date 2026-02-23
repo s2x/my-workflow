@@ -9,6 +9,7 @@ type Project struct {
 	BaseBranch string    `json:"base_branch"`
 	AutoTest   bool      `json:"auto_test"`
 	AutoReview bool      `json:"auto_review"`
+	Runner     string    `json:"runner"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }

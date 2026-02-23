@@ -16,17 +16,20 @@ func (db *DB) CreateProject(p *models.Project) error {
 	if p.BaseBranch == "" {
 		p.BaseBranch = "main"
 	}
+	if p.Runner == "" {
+		p.Runner = "qwen"
+	}
 
 	_, err := db.conn.Exec(`
-		INSERT INTO projects (id, name, repo_path, base_branch, auto_test, auto_review, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, p.ID, p.Name, p.RepoPath, p.BaseBranch, p.AutoTest, p.AutoReview, p.CreatedAt, p.UpdatedAt)
+		INSERT INTO projects (id, name, repo_path, base_branch, auto_test, auto_review, runner, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Name, p.RepoPath, p.BaseBranch, p.AutoTest, p.AutoReview, p.Runner, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
 func (db *DB) GetProjects() ([]models.Project, error) {
 	rows, err := db.conn.Query(`
-		SELECT id, name, repo_path, base_branch, auto_test, auto_review, created_at, updated_at
+		SELECT id, name, repo_path, base_branch, auto_test, auto_review, runner, created_at, updated_at
 		FROM projects ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -37,7 +40,7 @@ func (db *DB) GetProjects() ([]models.Project, error) {
 	var projects []models.Project
 	for rows.Next() {
 		var p models.Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.RepoPath, &p.BaseBranch, &p.AutoTest, &p.AutoReview, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.RepoPath, &p.BaseBranch, &p.AutoTest, &p.AutoReview, &p.Runner, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)
@@ -48,9 +51,9 @@ func (db *DB) GetProjects() ([]models.Project, error) {
 func (db *DB) GetProject(id string) (*models.Project, error) {
 	var p models.Project
 	err := db.conn.QueryRow(`
-		SELECT id, name, repo_path, base_branch, auto_test, auto_review, created_at, updated_at
+		SELECT id, name, repo_path, base_branch, auto_test, auto_review, runner, created_at, updated_at
 		FROM projects WHERE id = ?
-	`, id).Scan(&p.ID, &p.Name, &p.RepoPath, &p.BaseBranch, &p.AutoTest, &p.AutoReview, &p.CreatedAt, &p.UpdatedAt)
+	`, id).Scan(&p.ID, &p.Name, &p.RepoPath, &p.BaseBranch, &p.AutoTest, &p.AutoReview, &p.Runner, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -62,9 +65,12 @@ func (db *DB) GetProject(id string) (*models.Project, error) {
 
 func (db *DB) UpdateProject(p *models.Project) error {
 	p.UpdatedAt = time.Now()
+	if p.Runner == "" {
+		p.Runner = "qwen"
+	}
 	_, err := db.conn.Exec(`
-		UPDATE projects SET name = ?, repo_path = ?, base_branch = ?, auto_test = ?, auto_review = ?, updated_at = ? WHERE id = ?
-	`, p.Name, p.RepoPath, p.BaseBranch, p.AutoTest, p.AutoReview, p.UpdatedAt, p.ID)
+		UPDATE projects SET name = ?, repo_path = ?, base_branch = ?, auto_test = ?, auto_review = ?, runner = ?, updated_at = ? WHERE id = ?
+	`, p.Name, p.RepoPath, p.BaseBranch, p.AutoTest, p.AutoReview, p.Runner, p.UpdatedAt, p.ID)
 	return err
 }
 

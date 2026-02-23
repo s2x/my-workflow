@@ -15,6 +15,7 @@ import (
 
 type Runner struct {
 	opencodeBin string
+	qwenBin     string
 	logger      *slog.Logger
 	logWriter   LogWriter
 }
@@ -23,9 +24,10 @@ type LogWriter interface {
 	WriteLog(taskID string, level models.LogLevel, message string) error
 }
 
-func NewRunner(opencodeBin string, logger *slog.Logger) *Runner {
+func NewRunner(opencodeBin string, qwenBin string, logger *slog.Logger) *Runner {
 	return &Runner{
 		opencodeBin: opencodeBin,
+		qwenBin:     qwenBin,
 		logger:      logger,
 	}
 }
@@ -46,11 +48,20 @@ func (r *Runner) Run(agentName string, prompt string, repoPath string) RunResult
 }
 
 func (r *Runner) RunWithTaskID(agentName string, prompt string, repoPath string, taskID string) RunResult {
+	return r.RunWithTaskIDAndRunner(agentName, prompt, repoPath, taskID, "")
+}
+
+func (r *Runner) RunWithTaskIDAndRunner(agentName string, prompt string, repoPath string, taskID string, runnerType string) RunResult {
 	start := time.Now()
 
-	r.logger.Info("running agent", "agent", agentName, "prompt_len", len(prompt), "repo", repoPath, "task_id", taskID)
+	bin := r.qwenBin
+	if runnerType == "opencode" {
+		bin = r.opencodeBin
+	}
 
-	cmd := exec.Command(r.opencodeBin, "run",
+	r.logger.Info("running agent", "agent", agentName, "prompt_len", len(prompt), "repo", repoPath, "task_id", taskID, "runner", runnerType)
+
+	cmd := exec.Command(bin, "run",
 		"--agent", agentName,
 		prompt,
 	)

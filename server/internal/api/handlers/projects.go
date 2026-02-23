@@ -22,6 +22,7 @@ type CreateProjectRequest struct {
 	BaseBranch string `json:"base_branch"`
 	AutoTest   bool   `json:"auto_test"`
 	AutoReview bool   `json:"auto_review"`
+	Runner     string `json:"runner"`
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -35,12 +36,17 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	runner := req.Runner
+	if runner == "" {
+		runner = "qwen"
+	}
 	project := &models.Project{
 		Name:       req.Name,
 		RepoPath:   req.RepoPath,
 		BaseBranch: req.BaseBranch,
 		AutoTest:   req.AutoTest,
 		AutoReview: req.AutoReview,
+		Runner:     runner,
 	}
 
 	if err := h.db.CreateProject(project); err != nil {
@@ -110,6 +116,11 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	existing.AutoTest = req.AutoTest
 	existing.AutoReview = req.AutoReview
+	if req.Runner == "" {
+		existing.Runner = "qwen"
+	} else {
+		existing.Runner = req.Runner
+	}
 
 	if err := h.db.UpdateProject(existing); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

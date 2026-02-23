@@ -105,6 +105,9 @@ func (db *DB) migrate() error {
 	if err := addColumnIfNotExists("projects", "auto_review", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return fmt.Errorf("adding auto_review column: %w", err)
 	}
+	if err := addColumnIfNotExists("projects", "runner", "TEXT NOT NULL DEFAULT 'qwen'"); err != nil {
+		return fmt.Errorf("adding runner column: %w", err)
+	}
 
 	return nil
 }
