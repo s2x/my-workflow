@@ -857,9 +857,13 @@ function renderWorkflow(wf, tasks, msgs) {
         ? `<a class="mono" style="color:var(--primary);font-size:14px;margin-right:8px;text-decoration:none" href="${jiraUrl}/browse/${wf.ticket_jira_key}" target="_blank" rel="noopener">${wf.ticket_jira_key}</a>`
         : `<span class="mono" style="color:var(--primary);font-size:14px;margin-right:8px">${wf.ticket_jira_key}</span>`)
     : '';
+  const ticketTitle = wf.ticket_summary || ('Workflow ' + wf.id.slice(0,8));
+  const ticketTitleHtml = wf.ticket_id
+    ? `<a style="color:inherit;text-decoration:none;cursor:pointer" onclick="navigate('ticket','${wf.ticket_id}')">${ticketTitle}</a>`
+    : ticketTitle;
   const titleEl = document.getElementById('wf-title');
   titleEl.textContent = '';
-  titleEl.innerHTML = jiraKeyHtml + (wf.ticket_summary || ('Workflow ' + wf.id.slice(0,8)));
+  titleEl.innerHTML = jiraKeyHtml + ticketTitleHtml;
   document.getElementById('wf-branch').textContent = wf.branch_name || '';
 
   const step = STATUS_STEP[wf.status] ?? 0;
