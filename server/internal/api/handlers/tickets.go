@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os/exec"
+	"strings"
 
 	"github.com/piotr-halas/decodo-workflow/internal/db"
 	"github.com/piotr-halas/decodo-workflow/internal/models"
@@ -209,6 +212,55 @@ func (h *TicketHandler) GetByKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ticket)
+}
+
+func (h *TicketHandler) MarkDone(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	ticket, err := h.db.GetTicketByID(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if ticket == nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	project, err := h.db.GetProject(ticket.ProjectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if project == nil {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
+
+	if project.RepoPath != "" {
+		deleteLocal := exec.Command("git", "branch", "-D", branchName)
+		deleteLocal.Dir = project.RepoPath
+		deleteLocal.Run()
+
+		deleteRemote := exec.Command("git", "push", "origin", "--delete", branchName)
+		deleteRemote.Dir = project.RepoPath
+		deleteRemote.Run()
+	}
+
+	if err := h.db.UpdateTicketStatus(id, models.TicketStatusDone); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ticket.Status = models.TicketStatusDone
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ticket)
 }

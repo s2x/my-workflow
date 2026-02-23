@@ -305,3 +305,58 @@ func TestGetWorkflowsReturnsEmptyListWhenNoWorkflows(t *testing.T) {
 		t.Errorf("Expected 0 workflows, got %d", len(workflows))
 	}
 }
+
+func TestMarkDoneReturns200AndSetsStatusDone(t *testing.T) {
+	handler, database := setupTicketTestHandler(t)
+	defer database.Close()
+
+	project := createProject(t, database)
+	ticket := createTicket(t, database, project.ID)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/tickets/"+ticket.ID+"/done", nil)
+	req.SetPathValue("id", ticket.ID)
+	w := httptest.NewRecorder()
+
+	handler.MarkDone(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var result models.Ticket
+	json.NewDecoder(w.Body).Decode(&result)
+
+	if result.Status != models.TicketStatusDone {
+		t.Errorf("Expected status %q, got %q", models.TicketStatusDone, result.Status)
+	}
+}
+
+func TestMarkDoneReturns404ForMissingTicket(t *testing.T) {
+	handler, database := setupTicketTestHandler(t)
+	defer database.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/tickets/nonexistent/done", nil)
+	req.SetPathValue("id", "nonexistent")
+	w := httptest.NewRecorder()
+
+	handler.MarkDone(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestMarkDoneReturns400WhenMissingID(t *testing.T) {
+	handler, database := setupTicketTestHandler(t)
+	defer database.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/tickets//done", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.MarkDone(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
