@@ -599,7 +599,8 @@ async function deleteProject(projectId) {
   try {
     const r = await fetch('/api/projects/' + projectId, { method: 'DELETE' });
     if (!r.ok) throw new Error(await r.text());
-    navigate('projects');
+navigateFromPath(window.location.pathname, true);
+
   } catch(err) {
     document.getElementById('edit-project-form-error').textContent = err.message;
   }

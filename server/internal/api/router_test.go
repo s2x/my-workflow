@@ -85,6 +85,34 @@ func TestRouterSPACatchAllWorkflowDetail(t *testing.T) {
 	}
 }
 
+func TestRouterSPACatchAllTicketDetail(t *testing.T) {
+	router := setupTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/projects/some-id/tickets/ticket-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /projects/some-id/tickets/ticket-id: expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "<html") {
+		t.Errorf("GET /projects/some-id/tickets/ticket-id: expected HTML body (index.html), got: %s", body[:min(100, len(body))])
+	}
+}
+
+func TestRouterAPIHealthNotServedBySPA(t *testing.T) {
+	router := setupTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /api/health: expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "<html") {
+		t.Errorf("GET /api/health: expected non-HTML response, got HTML (SPA catch-all should not handle API routes)")
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
