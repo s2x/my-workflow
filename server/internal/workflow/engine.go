@@ -431,21 +431,36 @@ func (e *Engine) ApproveDeployment(workflowID string) error {
 		return fmt.Errorf("project not found for workflow")
 	}
 
-	pb := NewPromptBuilder(project.BaseBranch)
-	prompt := pb.BuildDeployPrompt(wf.BranchName)
 	deployTask := &models.Task{
 		WorkflowID: wf.ID,
 		Type:       models.TaskDeploy,
-		Status:     models.TaskQueued,
+		Status:     models.TaskRunning,
 		Agent:      "deployer",
-		Prompt:     prompt,
 	}
 	if err := e.db.CreateTask(deployTask); err != nil {
 		return err
 	}
 
 	e.chatMsg(wf.ID, "user", "", "Deployment approved!")
-	return e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowDeploying, "")
+	if err := e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowDeploying, ""); err != nil {
+		return err
+	}
+
+	result := e.runner.Deploy(project.RepoPath, wf.BranchName, project.BaseBranch, deployTask.ID)
+	if result.Error != nil {
+		e.logger.Error("deploy failed", "error", result.Error)
+		e.db.UpdateTaskError(deployTask.ID, result.Error.Error())
+		e.db.UpdateTaskStatus(deployTask.ID, models.TaskFailed)
+		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "deployment failed")
+		e.chatMsg(wf.ID, "system", "", "Deployment failed. Manual intervention required.")
+		return nil
+	}
+
+	e.db.UpdateTaskOutput(deployTask.ID, result.Output, result.Output)
+	e.db.UpdateTaskStatus(deployTask.ID, models.TaskCompleted)
+	e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowDone, "")
+	e.chatMsg(wf.ID, "system", "", "Deployment successful!")
+	return nil
 }
 
 func (e *Engine) RejectDeployment(workflowID string) error {

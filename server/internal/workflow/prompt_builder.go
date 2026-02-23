@@ -145,27 +145,6 @@ func (pb *PromptBuilder) BuildReviewPrompt(ticket *models.Ticket, branchName str
 	return b.String()
 }
 
-func (pb *PromptBuilder) BuildDeployPrompt(branchName string) string {
-	var b strings.Builder
-	b.WriteString("Wdróż zmiany do głównego brancha.\n\n")
-	b.WriteString(fmt.Sprintf("## Branch źródłowy: %s\n", branchName))
-	b.WriteString(fmt.Sprintf("## Branch docelowy: %s\n\n", pb.baseBranch))
-	b.WriteString("## Instrukcje\n")
-	b.WriteString(fmt.Sprintf("1. git checkout %s\n", pb.baseBranch))
-	b.WriteString("2. git pull origin\n")
-	b.WriteString(fmt.Sprintf("3. git merge %s\n", branchName))
-	b.WriteString(fmt.Sprintf("4. git push origin %s\n", pb.baseBranch))
-	b.WriteString("5. Sprawdź czy merge przeszedł bez konfliktów\n\n")
-	b.WriteString("Odpowiedz w JSON:\n")
-	b.WriteString(`{
-  "result": "DEPLOYED|FAILED",
-  "conflicts": false,
-  "message": "opis"
-}
-`)
-	return b.String()
-}
-
 func (pb *PromptBuilder) BuildFixPrompt(ticket *models.Ticket, spec string, branchName string, issues string) string {
 	var b strings.Builder
 	b.WriteString("Napraw problemy znalezione w poprzedniej iteracji.\n\n")

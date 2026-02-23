@@ -24,7 +24,7 @@ func TestEmbeddedOpencodeJSONHasPrimaryAgents(t *testing.T) {
 		t.Fatalf("Failed to parse embedded opencode.json: %v", err)
 	}
 
-	requiredAgents := []string{"descriptor", "coder", "tester", "reviewer", "deployer"}
+	requiredAgents := []string{"descriptor", "coder", "tester", "reviewer"}
 
 	for _, agentName := range requiredAgents {
 		agent, ok := config.Agent[agentName]
@@ -92,7 +92,7 @@ func TestSetupTargetRepoDeploysAgentFiles(t *testing.T) {
 		t.Fatalf("SetupTargetRepo failed: %v", err)
 	}
 
-	agentFiles := []string{"descriptor.md", "coder.md", "tester.md", "reviewer.md", "deployer.md"}
+	agentFiles := []string{"descriptor.md", "coder.md", "tester.md", "reviewer.md"}
 	for _, agentFile := range agentFiles {
 		agentPath := filepath.Join(tmpDir, ".opencode", "agents", agentFile)
 		if _, err := os.Stat(agentPath); os.IsNotExist(err) {

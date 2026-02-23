@@ -133,6 +133,103 @@ func (r *Runner) gitEnsureBranch(repoPath string, branch string, taskID string) 
 	return nil
 }
 
+func (r *Runner) Deploy(repoPath, featureBranch, baseBranch, taskID string) RunResult {
+	start := time.Now()
+
+	logMsg := fmt.Sprintf("Starting deploy: merging %s into %s", featureBranch, baseBranch)
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, logMsg)
+	}
+	r.logger.Info("starting deploy", "feature_branch", featureBranch, "base_branch", baseBranch, "repo", repoPath)
+
+	currentBranchCmd := exec.Command("git", "branch", "--show-current")
+	currentBranchCmd.Dir = repoPath
+	currentBranchOutput, err := currentBranchCmd.Output()
+	if err != nil {
+		return RunResult{Error: fmt.Errorf("failed to get current branch: %w", err), Duration: time.Since(start)}
+	}
+	currentBranch := strings.TrimSpace(string(currentBranchOutput))
+
+	if !strings.HasPrefix(currentBranch, "feature/") {
+		errMsg := fmt.Sprintf("current branch %q is not a feature branch (must start with 'feature/')", currentBranch)
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, errMsg)
+		}
+		return RunResult{Error: fmt.Errorf("%s", errMsg), Duration: time.Since(start)}
+	}
+
+	if err := r.gitCheckoutBranch(repoPath, baseBranch, taskID); err != nil {
+		return RunResult{Error: err, Duration: time.Since(start)}
+	}
+
+	mergeCmd := exec.Command("git", "merge", featureBranch)
+	mergeCmd.Dir = repoPath
+	mergeOutput, err := mergeCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git merge %s failed: %v\nOutput: %s", featureBranch, err, string(mergeOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git merge failed", "error", err, "output", string(mergeOutput))
+		return RunResult{Error: fmt.Errorf("failed to merge %s: %w", featureBranch, err), Output: string(mergeOutput), Duration: time.Since(start)}
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git merge %s succeeded\nOutput: %s", featureBranch, string(mergeOutput)))
+	}
+
+	pushCmd := exec.Command("git", "push", "origin", baseBranch)
+	pushCmd.Dir = repoPath
+	pushOutput, err := pushCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git push origin %s failed: %v\nOutput: %s", baseBranch, err, string(pushOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git push failed", "error", err, "output", string(pushOutput))
+		return RunResult{Error: fmt.Errorf("failed to push %s: %w", baseBranch, err), Output: string(pushOutput), Duration: time.Since(start)}
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git push origin %s succeeded\nOutput: %s", baseBranch, string(pushOutput)))
+	}
+
+	deleteLocalCmd := exec.Command("git", "branch", "-d", featureBranch)
+	deleteLocalCmd.Dir = repoPath
+	deleteLocalOutput, err := deleteLocalCmd.CombinedOutput()
+	if err != nil {
+		r.logger.Warn("failed to delete local feature branch", "branch", featureBranch, "error", err, "output", string(deleteLocalOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("Warning: failed to delete local branch %s: %v", featureBranch, err))
+		}
+	} else {
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("Deleted local branch %s", featureBranch))
+		}
+	}
+
+	deleteRemoteCmd := exec.Command("git", "push", "origin", "--delete", featureBranch)
+	deleteRemoteCmd.Dir = repoPath
+	deleteRemoteOutput, err := deleteRemoteCmd.CombinedOutput()
+	if err != nil {
+		r.logger.Warn("failed to delete remote feature branch", "branch", featureBranch, "error", err, "output", string(deleteRemoteOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("Warning: failed to delete remote branch %s: %v", featureBranch, err))
+		}
+	} else {
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("Deleted remote branch %s", featureBranch))
+		}
+	}
+
+	duration := time.Since(start)
+	successMsg := fmt.Sprintf("Deploy completed: merged %s into %s", featureBranch, baseBranch)
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, successMsg)
+	}
+	r.logger.Info("deploy completed", "feature_branch", featureBranch, "base_branch", baseBranch, "duration", duration)
+
+	return RunResult{Output: successMsg, ExitCode: 0, Duration: duration}
+}
+
 func (r *Runner) Run(agentName string, prompt string, repoPath string, baseBranch string) RunResult {
 	return r.RunWithTaskIDAndRunner(agentName, prompt, repoPath, "", "", baseBranch)
 }
