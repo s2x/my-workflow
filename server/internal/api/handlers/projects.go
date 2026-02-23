@@ -28,13 +28,15 @@ func NewProjectHandlerWithBins(db *db.DB, opencodeBin, qwenBin string) *ProjectH
 }
 
 type CreateProjectRequest struct {
-	Name       string `json:"name"`
-	RepoPath   string `json:"repo_path"`
-	BaseBranch string `json:"base_branch"`
-	AutoTest   bool   `json:"auto_test"`
-	AutoReview bool   `json:"auto_review"`
-	Runner     string `json:"runner"`
-	Model      string `json:"model"`
+	Name        string `json:"name"`
+	RepoPath    string `json:"repo_path"`
+	BaseBranch  string `json:"base_branch"`
+	AutoTest    bool   `json:"auto_test"`
+	AutoReview  bool   `json:"auto_review"`
+	Runner      string `json:"runner"`
+	ModelHigh   string `json:"model_high"`
+	ModelMedium string `json:"model_medium"`
+	ModelLow    string `json:"model_low"`
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -53,13 +55,15 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		runner = "qwen"
 	}
 	project := &models.Project{
-		Name:       req.Name,
-		RepoPath:   req.RepoPath,
-		BaseBranch: req.BaseBranch,
-		AutoTest:   req.AutoTest,
-		AutoReview: req.AutoReview,
-		Runner:     runner,
-		Model:      req.Model,
+		Name:        req.Name,
+		RepoPath:    req.RepoPath,
+		BaseBranch:  req.BaseBranch,
+		AutoTest:    req.AutoTest,
+		AutoReview:  req.AutoReview,
+		Runner:      runner,
+		ModelHigh:   req.ModelHigh,
+		ModelMedium: req.ModelMedium,
+		ModelLow:    req.ModelLow,
 	}
 
 	if err := h.db.CreateProject(project); err != nil {
@@ -148,7 +152,9 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	} else {
 		existing.Runner = req.Runner
 	}
-	existing.Model = req.Model
+	existing.ModelHigh = req.ModelHigh
+	existing.ModelMedium = req.ModelMedium
+	existing.ModelLow = req.ModelLow
 
 	if err := h.db.UpdateProject(existing); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

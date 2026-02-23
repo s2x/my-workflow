@@ -410,15 +410,17 @@ func TestDeleteProjectCascadesWorkflows(t *testing.T) {
 	}
 }
 
-func TestCreateProjectWithModel(t *testing.T) {
+func TestCreateProjectWithModels(t *testing.T) {
 	handler, database := setupTestHandler(t)
 	defer database.Close()
 
 	payload := CreateProjectRequest{
-		Name:     "model-project",
-		RepoPath: "/tmp/test",
-		Runner:   "opencode",
-		Model:    "claude-3-5-sonnet",
+		Name:        "model-project",
+		RepoPath:    "/tmp/test",
+		Runner:      "opencode",
+		ModelHigh:   "claude-3-5-sonnet",
+		ModelMedium: "claude-3-haiku",
+		ModelLow:    "claude-3-haiku",
 	}
 
 	body, _ := json.Marshal(payload)
@@ -434,12 +436,18 @@ func TestCreateProjectWithModel(t *testing.T) {
 	var project models.Project
 	json.NewDecoder(w.Body).Decode(&project)
 
-	if project.Model != "claude-3-5-sonnet" {
-		t.Errorf("Expected Model='claude-3-5-sonnet', got %q", project.Model)
+	if project.ModelHigh != "claude-3-5-sonnet" {
+		t.Errorf("Expected ModelHigh='claude-3-5-sonnet', got %q", project.ModelHigh)
+	}
+	if project.ModelMedium != "claude-3-haiku" {
+		t.Errorf("Expected ModelMedium='claude-3-haiku', got %q", project.ModelMedium)
+	}
+	if project.ModelLow != "claude-3-haiku" {
+		t.Errorf("Expected ModelLow='claude-3-haiku', got %q", project.ModelLow)
 	}
 }
 
-func TestCreateProjectDefaultModel(t *testing.T) {
+func TestCreateProjectDefaultModels(t *testing.T) {
 	handler, database := setupTestHandler(t)
 	defer database.Close()
 
@@ -461,28 +469,38 @@ func TestCreateProjectDefaultModel(t *testing.T) {
 	var project models.Project
 	json.NewDecoder(w.Body).Decode(&project)
 
-	if project.Model != "" {
-		t.Errorf("Expected Model default='', got %q", project.Model)
+	if project.ModelHigh != "" {
+		t.Errorf("Expected ModelHigh default='', got %q", project.ModelHigh)
+	}
+	if project.ModelMedium != "" {
+		t.Errorf("Expected ModelMedium default='', got %q", project.ModelMedium)
+	}
+	if project.ModelLow != "" {
+		t.Errorf("Expected ModelLow default='', got %q", project.ModelLow)
 	}
 }
 
-func TestUpdateProjectModel(t *testing.T) {
+func TestUpdateProjectModels(t *testing.T) {
 	handler, database := setupTestHandler(t)
 	defer database.Close()
 
 	project := &models.Project{
-		Name:     "update-model-project",
-		RepoPath: "/tmp/test",
-		Runner:   "opencode",
-		Model:    "old-model",
+		Name:        "update-model-project",
+		RepoPath:    "/tmp/test",
+		Runner:      "opencode",
+		ModelHigh:   "old-high",
+		ModelMedium: "old-medium",
+		ModelLow:    "old-low",
 	}
 	database.CreateProject(project)
 
 	payload := CreateProjectRequest{
-		Name:     "update-model-project",
-		RepoPath: "/tmp/test",
-		Runner:   "opencode",
-		Model:    "new-model",
+		Name:        "update-model-project",
+		RepoPath:    "/tmp/test",
+		Runner:      "opencode",
+		ModelHigh:   "new-high",
+		ModelMedium: "new-medium",
+		ModelLow:    "new-low",
 	}
 
 	body, _ := json.Marshal(payload)
@@ -499,8 +517,14 @@ func TestUpdateProjectModel(t *testing.T) {
 	var updated models.Project
 	json.NewDecoder(w.Body).Decode(&updated)
 
-	if updated.Model != "new-model" {
-		t.Errorf("Expected Model='new-model' after update, got %q", updated.Model)
+	if updated.ModelHigh != "new-high" {
+		t.Errorf("Expected ModelHigh='new-high' after update, got %q", updated.ModelHigh)
+	}
+	if updated.ModelMedium != "new-medium" {
+		t.Errorf("Expected ModelMedium='new-medium' after update, got %q", updated.ModelMedium)
+	}
+	if updated.ModelLow != "new-low" {
+		t.Errorf("Expected ModelLow='new-low' after update, got %q", updated.ModelLow)
 	}
 }
 

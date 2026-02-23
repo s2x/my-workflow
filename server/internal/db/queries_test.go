@@ -670,15 +670,17 @@ func TestUpdateTicketStatus(t *testing.T) {
 	}
 }
 
-func TestCreateProjectSavesModel(t *testing.T) {
+func TestCreateProjectSavesModels(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
 	project := &models.Project{
-		Name:     "model-project",
-		RepoPath: "/tmp/test",
-		Runner:   "opencode",
-		Model:    "claude-3-5-sonnet",
+		Name:        "model-project",
+		RepoPath:    "/tmp/test",
+		Runner:      "opencode",
+		ModelHigh:   "claude-3-5-sonnet",
+		ModelMedium: "claude-3-haiku",
+		ModelLow:    "claude-3-haiku",
 	}
 	if err := db.CreateProject(project); err != nil {
 		t.Fatalf("CreateProject failed: %v", err)
@@ -689,19 +691,27 @@ func TestCreateProjectSavesModel(t *testing.T) {
 		t.Fatalf("GetProject failed: %v", err)
 	}
 
-	if retrieved.Model != "claude-3-5-sonnet" {
-		t.Errorf("Expected Model='claude-3-5-sonnet', got %q", retrieved.Model)
+	if retrieved.ModelHigh != "claude-3-5-sonnet" {
+		t.Errorf("Expected ModelHigh='claude-3-5-sonnet', got %q", retrieved.ModelHigh)
+	}
+	if retrieved.ModelMedium != "claude-3-haiku" {
+		t.Errorf("Expected ModelMedium='claude-3-haiku', got %q", retrieved.ModelMedium)
+	}
+	if retrieved.ModelLow != "claude-3-haiku" {
+		t.Errorf("Expected ModelLow='claude-3-haiku', got %q", retrieved.ModelLow)
 	}
 }
 
-func TestGetProjectReadsModel(t *testing.T) {
+func TestGetProjectReadsModels(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
 	project := &models.Project{
-		Name:     "get-model-project",
-		RepoPath: "/tmp/test",
-		Model:    "gpt-4o",
+		Name:        "get-model-project",
+		RepoPath:    "/tmp/test",
+		ModelHigh:   "gpt-4o",
+		ModelMedium: "gpt-4o-mini",
+		ModelLow:    "gpt-3.5-turbo",
 	}
 	if err := db.CreateProject(project); err != nil {
 		t.Fatalf("CreateProject failed: %v", err)
@@ -712,25 +722,35 @@ func TestGetProjectReadsModel(t *testing.T) {
 		t.Fatalf("GetProject failed: %v", err)
 	}
 
-	if retrieved.Model != "gpt-4o" {
-		t.Errorf("Expected Model='gpt-4o', got %q", retrieved.Model)
+	if retrieved.ModelHigh != "gpt-4o" {
+		t.Errorf("Expected ModelHigh='gpt-4o', got %q", retrieved.ModelHigh)
+	}
+	if retrieved.ModelMedium != "gpt-4o-mini" {
+		t.Errorf("Expected ModelMedium='gpt-4o-mini', got %q", retrieved.ModelMedium)
+	}
+	if retrieved.ModelLow != "gpt-3.5-turbo" {
+		t.Errorf("Expected ModelLow='gpt-3.5-turbo', got %q", retrieved.ModelLow)
 	}
 }
 
-func TestUpdateProjectModel(t *testing.T) {
+func TestUpdateProjectModels(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
 	project := &models.Project{
-		Name:     "update-model-project",
-		RepoPath: "/tmp/test",
-		Model:    "old-model",
+		Name:        "update-model-project",
+		RepoPath:    "/tmp/test",
+		ModelHigh:   "old-high",
+		ModelMedium: "old-medium",
+		ModelLow:    "old-low",
 	}
 	if err := db.CreateProject(project); err != nil {
 		t.Fatalf("CreateProject failed: %v", err)
 	}
 
-	project.Model = "new-model"
+	project.ModelHigh = "new-high"
+	project.ModelMedium = "new-medium"
+	project.ModelLow = "new-low"
 	if err := db.UpdateProject(project); err != nil {
 		t.Fatalf("UpdateProject failed: %v", err)
 	}
@@ -740,12 +760,18 @@ func TestUpdateProjectModel(t *testing.T) {
 		t.Fatalf("GetProject failed: %v", err)
 	}
 
-	if retrieved.Model != "new-model" {
-		t.Errorf("Expected Model='new-model' after update, got %q", retrieved.Model)
+	if retrieved.ModelHigh != "new-high" {
+		t.Errorf("Expected ModelHigh='new-high' after update, got %q", retrieved.ModelHigh)
+	}
+	if retrieved.ModelMedium != "new-medium" {
+		t.Errorf("Expected ModelMedium='new-medium' after update, got %q", retrieved.ModelMedium)
+	}
+	if retrieved.ModelLow != "new-low" {
+		t.Errorf("Expected ModelLow='new-low' after update, got %q", retrieved.ModelLow)
 	}
 }
 
-func TestCreateProjectDefaultModel(t *testing.T) {
+func TestCreateProjectDefaultModels(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -762,8 +788,14 @@ func TestCreateProjectDefaultModel(t *testing.T) {
 		t.Fatalf("GetProject failed: %v", err)
 	}
 
-	if retrieved.Model != "" {
-		t.Errorf("Expected Model default='', got %q", retrieved.Model)
+	if retrieved.ModelHigh != "" {
+		t.Errorf("Expected ModelHigh default='', got %q", retrieved.ModelHigh)
+	}
+	if retrieved.ModelMedium != "" {
+		t.Errorf("Expected ModelMedium default='', got %q", retrieved.ModelMedium)
+	}
+	if retrieved.ModelLow != "" {
+		t.Errorf("Expected ModelLow default='', got %q", retrieved.ModelLow)
 	}
 }
 

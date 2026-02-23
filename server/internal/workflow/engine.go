@@ -142,7 +142,15 @@ func (e *Engine) processTask(task models.Task) {
 		}
 	}
 
-	result := e.runner.RunWithTaskIDAndRunner(task.Agent, task.Prompt, project.RepoPath, task.ID, project.Runner, project.BaseBranch, project.Model)
+	ticket, err := e.db.GetTicketByID(wf.TicketID)
+	if err != nil || ticket == nil {
+		e.logger.Error("failed to get ticket for task", "error", err)
+		e.db.UpdateTaskError(task.ID, "ticket not found")
+		e.handleTaskFailure(task)
+		return
+	}
+	model := project.ModelForPriority(ticket.Priority)
+	result := e.runner.RunWithTaskIDAndRunner(task.Agent, task.Prompt, project.RepoPath, task.ID, project.Runner, project.BaseBranch, model)
 
 	if result.Error != nil {
 		e.logger.Error("agent failed", "agent", task.Agent, "error", result.Error)
