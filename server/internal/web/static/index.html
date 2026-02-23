@@ -684,9 +684,10 @@ async function loadEditProjectModels(currentModel) {
   const sel = document.getElementById('ep-model');
   sel.innerHTML = '<option value="">Default</option>';
   try {
-    const models = await api('/projects/' + currentProjectId + '/models');
-    if (Array.isArray(models) && models.length > 0) {
-      models.forEach(m => {
+    const resp = await api('/projects/' + currentProjectId + '/models');
+    const modelsList = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.models) ? resp.models : []);
+    if (modelsList.length > 0) {
+      modelsList.forEach(m => {
         const opt = document.createElement('option');
         opt.value = m;
         opt.textContent = m;
