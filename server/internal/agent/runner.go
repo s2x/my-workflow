@@ -285,6 +285,20 @@ func (r *Runner) Deploy(repoPath, featureBranch, baseBranch, taskID string) RunR
 	}
 	r.logger.Info("starting deploy", "feature_branch", featureBranch, "base_branch", baseBranch, "repo", repoPath)
 
+	// Stash any local changes before switching branches
+	stashCmd := exec.Command("git", "stash")
+	stashCmd.Dir = repoPath
+	stashOutput, err := stashCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git stash failed: %v\nOutput: %s", err, string(stashOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, logMsg)
+		}
+		r.logger.Warn("git stash failed (continuing)", "error", err, "output", string(stashOutput))
+	} else if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git stash succeeded\nOutput: %s", string(stashOutput)))
+	}
+
 	currentBranchCmd := exec.Command("git", "branch", "--show-current")
 	currentBranchCmd.Dir = repoPath
 	currentBranchOutput, err := currentBranchCmd.Output()
