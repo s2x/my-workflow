@@ -136,16 +136,29 @@ func (r *Runner) gitEnsureBranch(repoPath string, branch string, taskID string) 
 func (r *Runner) PrepareBranch(repoPath, branchName, taskID string) error {
 	r.logger.Info("preparing branch", "branch", branchName, "repo", repoPath)
 
+	stashCmd := exec.Command("git", "stash")
+	stashCmd.Dir = repoPath
+	stashOutput, err := stashCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git stash failed: %v\nOutput: %s", err, string(stashOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, logMsg)
+		}
+		r.logger.Warn("git stash failed (continuing)", "error", err, "output", string(stashOutput))
+	} else if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git stash succeeded\nOutput: %s", string(stashOutput)))
+	}
+
 	fetchCmd := exec.Command("git", "fetch", "origin")
 	fetchCmd.Dir = repoPath
-	fetchOutput, err := fetchCmd.CombinedOutput()
-	if err != nil {
-		logMsg := fmt.Sprintf("git fetch origin failed: %v\nOutput: %s", err, string(fetchOutput))
+	fetchOutput, fetchErr := fetchCmd.CombinedOutput()
+	if fetchErr != nil {
+		logMsg := fmt.Sprintf("git fetch origin failed: %v\nOutput: %s", fetchErr, string(fetchOutput))
 		if taskID != "" && r.logWriter != nil {
 			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
 		}
-		r.logger.Error("git fetch origin failed", "error", err, "output", string(fetchOutput))
-		return fmt.Errorf("git fetch origin failed: %w", err)
+		r.logger.Error("git fetch origin failed", "error", fetchErr, "output", string(fetchOutput))
+		return fmt.Errorf("git fetch origin failed: %w", fetchErr)
 	}
 	if taskID != "" && r.logWriter != nil {
 		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git fetch origin succeeded\nOutput: %s", string(fetchOutput)))
