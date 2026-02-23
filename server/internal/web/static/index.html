@@ -166,6 +166,23 @@
         <label>Base Branch</label>
         <input type="text" id="fp-base" placeholder="main" value="main">
       </div>
+      <div class="form-group">
+        <label>Runner</label>
+        <select id="fp-runner">
+          <option value="qwen" selected>Qwen</option>
+          <option value="opencode">OpenCode</option>
+        </select>
+      </div>
+      <div class="form-group" style="display:flex;gap:16px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="fp-autotest" checked>
+          <span>Auto Test</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="fp-autoreview" checked>
+          <span>Auto Review</span>
+        </label>
+      </div>
       <div id="project-form-error" class="error-text" style="margin-bottom:12px"></div>
       <div style="display:flex;gap:8px">
         <button type="submit" class="btn btn-primary" id="project-submit-btn">Create Project</button>
@@ -188,6 +205,23 @@
       <div class="form-group">
         <label>Base Branch</label>
         <input type="text" id="ep-base" placeholder="main" value="main">
+      </div>
+      <div class="form-group">
+        <label>Runner</label>
+        <select id="ep-runner">
+          <option value="qwen">Qwen</option>
+          <option value="opencode">OpenCode</option>
+        </select>
+      </div>
+      <div class="form-group" style="display:flex;gap:16px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="ep-autotest">
+          <span>Auto Test</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="ep-autoreview">
+          <span>Auto Review</span>
+        </label>
       </div>
       <div id="edit-project-form-error" class="error-text" style="margin-bottom:12px"></div>
       <div style="display:flex;gap:8px">
@@ -393,6 +427,9 @@ async function loadProjects() {
             <div class="project-path">${p.repo_path}</div>
             <div class="project-meta">
               <span class="muted">base: ${p.base_branch}</span>
+              <span class="badge ${p.runner === 'qwen' ? 'badge-purple' : 'badge-blue'}">${p.runner || 'qwen'}</span>
+              ${p.auto_test ? '<span style="color:var(--success);font-size:11px">auto-test</span>' : ''}
+              ${p.auto_review ? '<span style="color:var(--success);font-size:11px">auto-review</span>' : ''}
             </div>
           </div>
           <span class="muted">${new Date(p.created_at).toLocaleDateString()}</span>
@@ -416,7 +453,10 @@ async function submitProject(e) {
     const project = await api('/projects', { method:'POST', body: JSON.stringify({
       name,
       repo_path: repoPath,
-      base_branch: document.getElementById('fp-base').value || 'main'
+      base_branch: document.getElementById('fp-base').value || 'main',
+      runner: document.getElementById('fp-runner').value,
+      auto_test: document.getElementById('fp-autotest').checked,
+      auto_review: document.getElementById('fp-autoreview').checked
     })});
     navigate('project', project.id);
   } catch(err) {
@@ -432,6 +472,9 @@ async function loadEditProject(projectId) {
     document.getElementById('ep-name').value = project.name;
     document.getElementById('ep-repo').value = project.repo_path;
     document.getElementById('ep-base').value = project.base_branch;
+    document.getElementById('ep-runner').value = project.runner || 'qwen';
+    document.getElementById('ep-autotest').checked = project.auto_test;
+    document.getElementById('ep-autoreview').checked = project.auto_review;
     document.getElementById('edit-project-form-error').textContent = '';
   } catch(err) {
     document.getElementById('edit-project-form-error').textContent = err.message;
@@ -451,7 +494,10 @@ async function submitEditProject(e) {
     await api('/projects/' + currentProjectId, { method:'PUT', body: JSON.stringify({
       name,
       repo_path: repoPath,
-      base_branch: document.getElementById('ep-base').value || 'main'
+      base_branch: document.getElementById('ep-base').value || 'main',
+      runner: document.getElementById('ep-runner').value,
+      auto_test: document.getElementById('ep-autotest').checked,
+      auto_review: document.getElementById('ep-autoreview').checked
     })});
     navigate('projects');
   } catch(err) {
@@ -591,19 +637,31 @@ function renderWorkflow(wf, tasks, msgs) {
   if (!tasks.length) taskEl.innerHTML = '<p class="empty">No tasks yet.</p>';
   else {
     taskEl.innerHTML = tasks.map(t => `
-      <div class="task-item" onclick="showTaskLogs('${t.id}')" style="cursor:pointer">
-        <div class="task-row">
+      <div class="task-item" style="cursor:pointer">
+        <div class="task-row" onclick="showTaskLogs('${t.id}')">
           <div class="task-left">
             <div class="dot dot-${t.status.toLowerCase()}"></div>
             <span class="mono" style="font-size:12px">${t.type}</span>
             <span class="${AGENT_ROLE_CLASS[t.agent]||'muted'}" style="font-size:12px">${t.agent}</span>
           </div>
-          <span class="muted">${t.status}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="muted">${t.status}</span>
+            ${t.status === 'FAILED' ? `<button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();retryTask('${t.id}')">Retry</button>` : ''}
+          </div>
         </div>
-        ${t.parent_task_id ? `<div class="subtask-label">subtask of ${t.parent_task_id.slice(0,8)}</div>` : ''}
-        ${t.error ? `<div class="error-text">${t.error}</div>` : ''}
+        ${t.parent_task_id ? `<div class="subtask-label" onclick="showTaskLogs('${t.id}')">subtask of ${t.parent_task_id.slice(0,8)}</div>` : ''}
+        ${t.error ? `<div class="error-text" onclick="showTaskLogs('${t.id}')">${t.error}</div>` : ''}
       </div>
     `).join('');
+  }
+}
+
+async function retryTask(taskId) {
+  try {
+    await api('/tasks/' + taskId + '/retry', {method:'POST'});
+    loadWorkflow();
+  } catch(err) {
+    alert('Failed to retry task: ' + err.message);
   }
 }
 

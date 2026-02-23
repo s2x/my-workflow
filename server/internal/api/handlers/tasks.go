@@ -18,6 +18,33 @@ func NewTaskHandler(db *db.DB) *TaskHandler {
 	return &TaskHandler{db: db}
 }
 
+func (h *TaskHandler) Retry(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	task, err := h.db.GetTask(taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if task == nil {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+
+	if task.Status != models.TaskFailed {
+		http.Error(w, "task is not in failed state", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.db.RetryTask(taskID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "retrying"})
+}
+
 func (h *TaskHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
 

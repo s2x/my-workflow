@@ -553,6 +553,15 @@ func (db *DB) GetTaskLogsAfter(taskID string, afterTimestamp time.Time) ([]model
 	return logs, rows.Err()
 }
 
+func (db *DB) RetryTask(id string) error {
+	_, err := db.conn.Exec(`
+		UPDATE tasks 
+		SET status = 'QUEUED', error = '', started_at = NULL, completed_at = NULL 
+		WHERE id = ?
+	`, id)
+	return err
+}
+
 func (db *DB) GetTask(id string) (*models.Task, error) {
 	var t models.Task
 	err := db.conn.QueryRow(`
