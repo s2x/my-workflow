@@ -5,12 +5,13 @@ import (
 	"net/http"
 
 	"github.com/piotr-halas/decodo-workflow/internal/api/handlers"
+	"github.com/piotr-halas/decodo-workflow/internal/config"
 	"github.com/piotr-halas/decodo-workflow/internal/db"
 	"github.com/piotr-halas/decodo-workflow/internal/web"
 	"github.com/piotr-halas/decodo-workflow/internal/workflow"
 )
 
-func NewRouter(database *db.DB, engine *workflow.Engine) http.Handler {
+func NewRouter(database *db.DB, engine *workflow.Engine, cfg *config.Config) http.Handler {
 	mux := http.NewServeMux()
 
 	projectHandler := handlers.NewProjectHandler(database)
@@ -18,8 +19,10 @@ func NewRouter(database *db.DB, engine *workflow.Engine) http.Handler {
 	workflowHandler := handlers.NewWorkflowHandler(database, engine)
 	taskHandler := handlers.NewTaskHandler(database)
 	sseHandler := handlers.NewSSEHandler(database)
+	configHandler := handlers.NewConfigHandler(cfg)
 
 	mux.HandleFunc("GET /api/health", handlers.Health)
+	mux.HandleFunc("GET /api/config", configHandler.Get)
 
 	mux.HandleFunc("GET /api/projects", projectHandler.List)
 	mux.HandleFunc("POST /api/projects", projectHandler.Create)
