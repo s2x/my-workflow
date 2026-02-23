@@ -46,7 +46,7 @@ func (h *TicketHandler) Create(w http.ResponseWriter, r *http.Request) {
 		AcceptanceCriteria: req.AcceptanceCriteria,
 		TicketType:         req.TicketType,
 		Labels:             req.Labels,
-		Status:             "Open",
+		Status:             models.TicketStatusOpen,
 		Source:             "manual",
 		RawJSON:            "{}",
 	}
@@ -94,6 +94,7 @@ type UpdateTicketRequest struct {
 	AcceptanceCriteria string `json:"acceptance_criteria"`
 	Priority           string `json:"priority"`
 	Labels             string `json:"labels"`
+	Status             string `json:"status"`
 }
 
 func (h *TicketHandler) GetByID(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +150,18 @@ func (h *TicketHandler) Update(w http.ResponseWriter, r *http.Request) {
 	ticket.AcceptanceCriteria = req.AcceptanceCriteria
 	ticket.Priority = req.Priority
 	ticket.Labels = req.Labels
+
+	if req.Status != "" {
+		if req.Status != models.TicketStatusOpen && req.Status != models.TicketStatusDone {
+			http.Error(w, "invalid status value", http.StatusBadRequest)
+			return
+		}
+		if err := h.db.UpdateTicketStatus(id, req.Status); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		ticket.Status = req.Status
+	}
 
 	if err := h.db.UpdateTicket(ticket); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

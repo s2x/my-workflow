@@ -159,6 +159,95 @@ func TestUpdateTicketReturns404WhenNotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateTicketStatusToDoneReturns200(t *testing.T) {
+	handler, database := setupTicketTestHandler(t)
+	defer database.Close()
+
+	project := createProject(t, database)
+	ticket := createTicket(t, database, project.ID)
+
+	payload := UpdateTicketRequest{
+		Summary: "Some summary",
+		Status:  "done",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/tickets/"+ticket.ID, bytes.NewReader(body))
+	req.SetPathValue("id", ticket.ID)
+	w := httptest.NewRecorder()
+
+	handler.Update(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var result models.Ticket
+	json.NewDecoder(w.Body).Decode(&result)
+
+	if result.Status != "done" {
+		t.Errorf("Expected status %q, got %q", "done", result.Status)
+	}
+}
+
+func TestUpdateTicketStatusInvalidReturns400(t *testing.T) {
+	handler, database := setupTicketTestHandler(t)
+	defer database.Close()
+
+	project := createProject(t, database)
+	ticket := createTicket(t, database, project.ID)
+
+	payload := UpdateTicketRequest{
+		Summary: "Some summary",
+		Status:  "invalid",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/tickets/"+ticket.ID, bytes.NewReader(body))
+	req.SetPathValue("id", ticket.ID)
+	w := httptest.NewRecorder()
+
+	handler.Update(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestUpdateTicketWithoutStatusDoesNotChangeStatus(t *testing.T) {
+	handler, database := setupTicketTestHandler(t)
+	defer database.Close()
+
+	project := createProject(t, database)
+	ticket := createTicket(t, database, project.ID)
+
+	originalStatus := ticket.Status
+
+	payload := UpdateTicketRequest{
+		Summary:     "Updated summary",
+		Description: "Updated description",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/tickets/"+ticket.ID, bytes.NewReader(body))
+	req.SetPathValue("id", ticket.ID)
+	w := httptest.NewRecorder()
+
+	handler.Update(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	updated, err := database.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("Failed to get ticket: %v", err)
+	}
+	if updated.Status != originalStatus {
+		t.Errorf("Expected status %q, got %q", originalStatus, updated.Status)
+	}
+}
+
 func TestGetWorkflowsReturnsWorkflowsForTicket(t *testing.T) {
 	handler, database := setupTicketTestHandler(t)
 	defer database.Close()

@@ -2,6 +2,11 @@ package models
 
 import "time"
 
+const (
+	TicketStatusOpen = "Open"
+	TicketStatusDone = "done"
+)
+
 type Ticket struct {
 	ID                 string    `json:"id"`
 	ProjectID          string    `json:"project_id"`

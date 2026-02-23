@@ -307,6 +307,13 @@
             <option value="Critical">Critical</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="et-status">
+            <option value="Open">Open</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
         <div id="edit-ticket-form-error" class="error-text" style="margin-bottom:12px"></div>
         <div style="display:flex;gap:8px">
           <button type="submit" class="btn btn-primary" id="edit-ticket-submit-btn">Save Changes</button>
@@ -742,6 +749,7 @@ async function loadTicket() {
     document.getElementById('et-description').value = ticket.description || '';
     document.getElementById('et-ac').value = ticket.acceptance_criteria || '';
     document.getElementById('et-priority').value = ticket.priority || 'Medium';
+    document.getElementById('et-status').value = ticket.status || 'Open';
     document.getElementById('edit-ticket-form-error').textContent = '';
 
     renderTicketWorkflows(workflows);
@@ -782,7 +790,8 @@ async function submitEditTicket(e) {
       description: document.getElementById('et-description').value,
       acceptance_criteria: document.getElementById('et-ac').value,
       priority: document.getElementById('et-priority').value,
-      labels: ''
+      labels: '',
+      status: document.getElementById('et-status').value
     })});
     await loadTicket();
   } catch(err) {
