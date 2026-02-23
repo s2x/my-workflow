@@ -51,33 +51,14 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no expla
   "affected_components": ["component1", "component2"]
 }`
 
-func (s *service) run(prompt string) (string, error) {
-	bin := s.qwenBin
-	if bin == "" {
-		bin = s.opencodeBin
+func (s *service) buildCommand(ctx context.Context, prompt string) *exec.Cmd {
+	if s.opencodeBin != "" {
+		return exec.CommandContext(ctx, s.opencodeBin, "run", "--agent", "descriptor", prompt)
 	}
-	if bin == "" {
-		bin = "qwen"
+	if s.qwenBin != "" {
+		return exec.CommandContext(ctx, s.qwenBin, prompt)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, bin, "run", "--agent", "descriptor", prompt)
-
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("timeout: AI took longer than 30s")
-		}
-		return "", fmt.Errorf("AI command failed: %w", err)
-	}
-
-	return strings.TrimSpace(out.String()), nil
+	return exec.CommandContext(ctx, "opencode", "run", "--agent", "descriptor", prompt)
 }
 
 func extractJSON(output string) string {
@@ -122,18 +103,10 @@ func (s *service) RefineTicket(ctx context.Context, currentDescription string, r
 }
 
 func (s *service) runWithContext(ctx context.Context, prompt string) (string, error) {
-	bin := s.qwenBin
-	if bin == "" {
-		bin = s.opencodeBin
-	}
-	if bin == "" {
-		bin = "qwen"
-	}
-
 	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(timeoutCtx, bin, "run", "--agent", "descriptor", prompt)
+	cmd := s.buildCommand(timeoutCtx, prompt)
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer
