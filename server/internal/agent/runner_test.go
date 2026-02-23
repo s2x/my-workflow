@@ -371,12 +371,12 @@ func TestDeleteBranchWhenBranchDoesNotExistLocally(t *testing.T) {
 	currentBranchCmd.Dir = dir
 	out, _ := currentBranchCmd.Output()
 	currentBranch := strings.TrimSpace(string(out))
-	if currentBranch != "feature/nonexistent" {
-		t.Errorf("Expected to be on feature/nonexistent after DeleteBranch, got: %s", currentBranch)
+	if currentBranch != "master" {
+		t.Errorf("Expected to be on master after DeleteBranch (non-existent branch), got: %s", currentBranch)
 	}
 }
 
-func TestDeleteBranchRecreatesFromBase(t *testing.T) {
+func TestDeleteBranchDeletesLocalBranchAndChecksOutBase(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)
 
@@ -411,8 +411,62 @@ func TestDeleteBranchRecreatesFromBase(t *testing.T) {
 	currentBranchCmd.Dir = dir
 	out, _ := currentBranchCmd.Output()
 	currentBranch := strings.TrimSpace(string(out))
-	if currentBranch != "feature/to-delete" {
-		t.Errorf("Expected to be on feature/to-delete after recreation, got: %s", currentBranch)
+	if currentBranch != "master" {
+		t.Errorf("Expected to be on master after DeleteBranch, got: %s", currentBranch)
+	}
+
+	checkDeletedCmd := exec.Command("git", "rev-parse", "--verify", "feature/to-delete")
+	checkDeletedCmd.Dir = dir
+	if err := checkDeletedCmd.Run(); err == nil {
+		t.Error("Expected feature/to-delete to be deleted locally, but it still exists")
+	}
+}
+
+func TestDeleteBranchDoesNotCreateNewBranch(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	setupCmds := [][]string{
+		{"git", "checkout", "-b", "feature/no-recreate"},
+		{"git", "commit", "--allow-empty", "-m", "feature commit"},
+		{"git", "checkout", "master"},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("", "", logger)
+
+	err := runner.DeleteBranch(dir, "feature/no-recreate", "master")
+	if err != nil {
+		t.Fatalf("DeleteBranch failed: %v", err)
+	}
+
+	checkCmd := exec.Command("git", "rev-parse", "--verify", "feature/no-recreate")
+	checkCmd.Dir = dir
+	if err := checkCmd.Run(); err == nil {
+		t.Error("Expected feature/no-recreate to NOT exist after DeleteBranch (should not be recreated)")
+	}
+}
+
+func TestPrepareBranchFailsWhenFetchFails(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("", "", logger)
+
+	err := runner.PrepareBranch(dir, "feature/test-branch", "")
+	if err == nil {
+		t.Fatal("Expected error when git fetch origin fails (no remote), got nil")
+	}
+	if !strings.Contains(err.Error(), "git fetch origin failed") {
+		t.Errorf("Expected 'git fetch origin failed' error, got: %v", err)
 	}
 }
 

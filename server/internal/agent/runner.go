@@ -133,6 +133,58 @@ func (r *Runner) gitEnsureBranch(repoPath string, branch string, taskID string) 
 	return nil
 }
 
+func (r *Runner) PrepareBranch(repoPath, branchName, taskID string) error {
+	r.logger.Info("preparing branch", "branch", branchName, "repo", repoPath)
+
+	fetchCmd := exec.Command("git", "fetch", "origin")
+	fetchCmd.Dir = repoPath
+	fetchOutput, err := fetchCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git fetch origin failed: %v\nOutput: %s", err, string(fetchOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git fetch origin failed", "error", err, "output", string(fetchOutput))
+		return fmt.Errorf("git fetch origin failed: %w", err)
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git fetch origin succeeded\nOutput: %s", string(fetchOutput)))
+	}
+
+	checkoutCmd := exec.Command("git", "checkout", "-b", branchName, "origin/master")
+	checkoutCmd.Dir = repoPath
+	checkoutOutput, err := checkoutCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git checkout -b %s origin/master failed: %v\nOutput: %s", branchName, err, string(checkoutOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git checkout -b failed", "branch", branchName, "error", err, "output", string(checkoutOutput))
+		return fmt.Errorf("git checkout -b %s origin/master failed: %w", branchName, err)
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git checkout -b %s origin/master succeeded\nOutput: %s", branchName, string(checkoutOutput)))
+	}
+
+	pushCmd := exec.Command("git", "push", "-u", "origin", branchName)
+	pushCmd.Dir = repoPath
+	pushOutput, err := pushCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git push -u origin %s failed: %v\nOutput: %s", branchName, err, string(pushOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git push -u origin failed", "branch", branchName, "error", err, "output", string(pushOutput))
+		return fmt.Errorf("git push -u origin %s failed: %w", branchName, err)
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git push -u origin %s succeeded\nOutput: %s", branchName, string(pushOutput)))
+	}
+
+	r.logger.Info("branch prepared successfully", "branch", branchName)
+	return nil
+}
+
 func (r *Runner) DeleteBranch(repoPath, featureBranch, baseBranch string) error {
 	if featureBranch == "" {
 		return fmt.Errorf("featureBranch cannot be empty")
@@ -145,11 +197,11 @@ func (r *Runner) DeleteBranch(repoPath, featureBranch, baseBranch string) error 
 	checkCmd.Dir = repoPath
 	branchExists := checkCmd.Run() == nil
 
-	if branchExists {
-		if err := r.gitCheckoutBranch(repoPath, baseBranch, ""); err != nil {
-			return fmt.Errorf("failed to checkout base branch: %w", err)
-		}
+	if err := r.gitCheckoutBranch(repoPath, baseBranch, ""); err != nil {
+		return fmt.Errorf("failed to checkout base branch: %w", err)
+	}
 
+	if branchExists {
 		deleteLocalCmd := exec.Command("git", "branch", "-D", featureBranch)
 		deleteLocalCmd.Dir = repoPath
 		if out, err := deleteLocalCmd.CombinedOutput(); err != nil {
@@ -162,19 +214,9 @@ func (r *Runner) DeleteBranch(repoPath, featureBranch, baseBranch string) error 
 		if err != nil && !strings.Contains(string(deleteRemoteOutput), "remote ref does not exist") {
 			r.logger.Warn("failed to delete remote feature branch", "branch", featureBranch, "error", err, "output", string(deleteRemoteOutput))
 		}
-	} else {
-		if err := r.gitCheckoutBranch(repoPath, baseBranch, ""); err != nil {
-			return fmt.Errorf("failed to checkout base branch: %w", err)
-		}
 	}
 
-	createCmd := exec.Command("git", "checkout", "-b", featureBranch)
-	createCmd.Dir = repoPath
-	if out, err := createCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to create branch %s: %w\nOutput: %s", featureBranch, err, string(out))
-	}
-
-	r.logger.Info("branch recreated from base", "branch", featureBranch, "base", baseBranch)
+	r.logger.Info("branch deleted", "branch", featureBranch, "base", baseBranch)
 	return nil
 }
 
@@ -291,18 +333,7 @@ func (r *Runner) RunWithTaskIDAndRunner(agentName string, prompt string, repoPat
 		bin = r.opencodeBin
 	}
 
-	r.logger.Info("running agent", "agent", agentName, "prompt_len", len(prompt), "repo", repoPath, "task_id", taskID, "runner", runnerType, "base_branch", baseBranch)
-
-	// Ensure we're on the correct base branch before running the agent
-	if baseBranch != "" {
-		if err := r.gitCheckoutBranch(repoPath, baseBranch, taskID); err != nil {
-			return RunResult{Error: err}
-		}
-		if err := r.gitPullBranch(repoPath, baseBranch, taskID); err != nil {
-			r.logger.Warn("git pull failed, continuing anyway", "error", err)
-		}
-		r.logger.Info("ready to run agent", "base_branch", baseBranch)
-	}
+	r.logger.Info("running agent", "agent", agentName, "prompt_len", len(prompt), "repo", repoPath, "task_id", taskID, "runner", runnerType)
 
 	cmd := exec.Command(bin, "run",
 		"--agent", agentName,

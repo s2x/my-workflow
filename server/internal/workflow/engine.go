@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -39,6 +40,8 @@ func (e *Engine) WriteLog(taskID string, level models.LogLevel, message string) 
 }
 
 func (e *Engine) StartWorkflow(project *models.Project, ticket *models.Ticket) (*models.Workflow, error) {
+	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
+
 	wf := &models.Workflow{
 		ProjectID: project.ID,
 		TicketID:  ticket.ID,
@@ -49,6 +52,16 @@ func (e *Engine) StartWorkflow(project *models.Project, ticket *models.Ticket) (
 	}
 
 	e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Workflow started for ticket %s: %s", ticket.JiraKey, ticket.Summary))
+
+	if err := e.runner.PrepareBranch(project.RepoPath, branchName, ""); err != nil {
+		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, fmt.Sprintf("failed to prepare branch: %v", err))
+		return nil, fmt.Errorf("preparing branch %s: %w", branchName, err)
+	}
+
+	if err := e.db.UpdateWorkflowBranch(wf.ID, branchName); err != nil {
+		return nil, fmt.Errorf("updating workflow branch: %w", err)
+	}
+	wf.BranchName = branchName
 
 	pb := NewPromptBuilder(project.BaseBranch)
 	prompt := pb.BuildDescribePrompt(ticket)
@@ -165,8 +178,6 @@ func (e *Engine) handleTaskCompletion(task models.Task, output string) {
 		e.afterTest(wf, ticket, output, pb)
 	case models.TaskReview:
 		e.afterReview(wf, ticket, output, pb)
-	case models.TaskDeploy:
-		e.afterDeploy(wf, output)
 	case models.TaskFix:
 		e.afterCode(wf, ticket, output, pb)
 	}
@@ -226,9 +237,6 @@ func (e *Engine) afterDescribe(wf *models.Workflow, ticket *models.Ticket, outpu
 }
 
 func (e *Engine) afterCode(wf *models.Workflow, ticket *models.Ticket, output string, pb *PromptBuilder) {
-	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
-	e.db.UpdateWorkflowBranch(wf.ID, branchName)
-
 	project, _ := e.db.GetProject(wf.ProjectID)
 	if project == nil {
 		e.logger.Error("project not found", "project_id", wf.ProjectID)
@@ -241,7 +249,7 @@ func (e *Engine) afterCode(wf *models.Workflow, ticket *models.Ticket, output st
 		return
 	}
 
-	prompt := pb.BuildTestPrompt(ticket, wf.Spec, branchName)
+	prompt := pb.BuildTestPrompt(ticket, wf.Spec, wf.BranchName)
 	testTask := &models.Task{
 		WorkflowID: wf.ID,
 		Type:       models.TaskTest,
@@ -436,7 +444,7 @@ func (e *Engine) ApproveDeployment(workflowID string) error {
 		WorkflowID: wf.ID,
 		Type:       models.TaskDeploy,
 		Status:     models.TaskRunning,
-		Agent:      "deployer",
+		Agent:      "system",
 	}
 	if err := e.db.CreateTask(deployTask); err != nil {
 		return err
@@ -447,21 +455,64 @@ func (e *Engine) ApproveDeployment(workflowID string) error {
 		return err
 	}
 
-	result := e.runner.Deploy(project.RepoPath, wf.BranchName, project.BaseBranch, deployTask.ID)
-	if result.Error != nil {
-		e.logger.Error("deploy failed", "error", result.Error)
-		e.db.UpdateTaskError(deployTask.ID, result.Error.Error())
+	if err := e.deployProgrammatic(project.RepoPath, wf.BranchName, project.BaseBranch, deployTask.ID); err != nil {
+		e.logger.Error("deploy failed", "error", err)
+		e.db.UpdateTaskError(deployTask.ID, err.Error())
 		e.db.UpdateTaskStatus(deployTask.ID, models.TaskFailed)
 		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "deployment failed")
 		e.chatMsg(wf.ID, "system", "", "Deployment failed. Manual intervention required.")
 		return nil
 	}
 
-	e.db.UpdateTaskOutput(deployTask.ID, result.Output, result.Output)
+	successMsg := fmt.Sprintf("Deployed: merged %s into %s", wf.BranchName, project.BaseBranch)
+	e.db.UpdateTaskOutput(deployTask.ID, successMsg, successMsg)
 	e.db.UpdateTaskStatus(deployTask.ID, models.TaskCompleted)
 	e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowDone, "")
 	e.db.UpdateTicketStatus(wf.TicketID, "done")
 	e.chatMsg(wf.ID, "system", "", "Deployment successful!")
+	return nil
+}
+
+func (e *Engine) deployProgrammatic(repoPath, featureBranch, baseBranch, taskID string) error {
+	runGit := func(args ...string) error {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoPath
+		out, err := cmd.CombinedOutput()
+		msg := fmt.Sprintf("git %s\nOutput: %s", strings.Join(args, " "), string(out))
+		if err != nil {
+			logMsg := fmt.Sprintf("%s\nError: %v", msg, err)
+			if taskID != "" {
+				_ = e.WriteLog(taskID, models.LogLevelError, logMsg)
+			}
+			e.logger.Error("git command failed", "args", args, "error", err, "output", string(out))
+			return fmt.Errorf("git %s failed: %w", strings.Join(args, " "), err)
+		}
+		if taskID != "" {
+			_ = e.WriteLog(taskID, models.LogLevelInfo, msg)
+		}
+		return nil
+	}
+
+	if err := runGit("checkout", baseBranch); err != nil {
+		return err
+	}
+	if err := runGit("pull", "origin", baseBranch); err != nil {
+		return err
+	}
+	if err := runGit("merge", featureBranch); err != nil {
+		return err
+	}
+	if err := runGit("push", "origin", baseBranch); err != nil {
+		return err
+	}
+	if err := runGit("push", "origin", "--delete", featureBranch); err != nil {
+		e.logger.Warn("failed to delete remote feature branch", "branch", featureBranch)
+	}
+	if err := runGit("branch", "-d", featureBranch); err != nil {
+		e.logger.Warn("failed to delete local feature branch", "branch", featureBranch)
+	}
+
+	e.logger.Info("deploy completed", "feature_branch", featureBranch, "base_branch", baseBranch)
 	return nil
 }
 
@@ -551,6 +602,13 @@ func (e *Engine) RestartWorkflow(workflowID string) error {
 	ticket, err := e.db.GetTicketByID(wf.TicketID)
 	if err != nil || ticket == nil {
 		return fmt.Errorf("ticket not found for workflow")
+	}
+
+	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
+	if err := e.runner.PrepareBranch(project.RepoPath, branchName, ""); err != nil {
+		e.logger.Warn("failed to prepare branch during restart", "branch", branchName, "error", err)
+	} else {
+		e.db.UpdateWorkflowBranch(workflowID, branchName)
 	}
 
 	pb := NewPromptBuilder(project.BaseBranch)

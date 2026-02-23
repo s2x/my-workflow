@@ -3,6 +3,7 @@ package workflow
 import (
 	"log/slog"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -715,4 +716,356 @@ func TestWorkflowTestFailureRetry(t *testing.T) {
 	if !foundFixTask {
 		t.Error("Expected fix task after test failure")
 	}
+}
+
+func initGitRepoWithRemote(t *testing.T) (repoDir, remoteDir string) {
+	t.Helper()
+
+	remoteDir = t.TempDir()
+	repoDir = t.TempDir()
+
+	runCmd := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %v in %s failed: %v\nOutput: %s", args, dir, err, string(out))
+		}
+	}
+
+	runCmd(remoteDir, "git", "init", "--bare")
+
+	runCmd(repoDir, "git", "init")
+	runCmd(repoDir, "git", "config", "user.email", "test@test.com")
+	runCmd(repoDir, "git", "config", "user.name", "Test")
+	runCmd(repoDir, "git", "remote", "add", "origin", remoteDir)
+	runCmd(repoDir, "git", "commit", "--allow-empty", "-m", "init")
+	runCmd(repoDir, "git", "push", "-u", "origin", "master")
+
+	return repoDir, remoteDir
+}
+
+func setupTestEngineWithRepo(t *testing.T) (*Engine, *db.DB, string) {
+	database, err := db.New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	engine := NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	repoDir, _ := initGitRepoWithRemote(t)
+	return engine, database, repoDir
+}
+
+func TestStartWorkflowPrepareBranchCalledWithCorrectName(t *testing.T) {
+	engine, database, repoDir := setupTestEngineWithRepo(t)
+	defer database.Close()
+
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	if err := database.CreateProject(project); err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "TEST-456",
+		Summary:   "Test ticket",
+	}
+	if err := database.CreateTicket(ticket); err != nil {
+		t.Fatalf("Failed to create ticket: %v", err)
+	}
+
+	wf, err := engine.StartWorkflow(project, ticket)
+	if err != nil {
+		t.Fatalf("StartWorkflow failed: %v", err)
+	}
+
+	expectedBranch := "feature/test-456"
+	if wf.BranchName != expectedBranch {
+		t.Errorf("Expected branch %q, got %q", expectedBranch, wf.BranchName)
+	}
+
+	dbWf, _ := database.GetWorkflow(wf.ID)
+	if dbWf.BranchName != expectedBranch {
+		t.Errorf("Expected DB branch %q, got %q", expectedBranch, dbWf.BranchName)
+	}
+
+	checkCmd := exec.Command("git", "rev-parse", "--verify", expectedBranch)
+	checkCmd.Dir = repoDir
+	if err := checkCmd.Run(); err != nil {
+		t.Errorf("Expected branch %q to exist locally after StartWorkflow, got error: %v", expectedBranch, err)
+	}
+}
+
+func TestStartWorkflowCreatesBranchBeforeDescribeTask(t *testing.T) {
+	engine, database, repoDir := setupTestEngineWithRepo(t)
+	defer database.Close()
+
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "LOCAL-999",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
+
+	wf, err := engine.StartWorkflow(project, ticket)
+	if err != nil {
+		t.Fatalf("StartWorkflow failed: %v", err)
+	}
+
+	if wf.BranchName == "" {
+		t.Error("Expected branch name to be set before describe task")
+	}
+
+	if wf.Status != models.WorkflowDescribing {
+		t.Errorf("Expected WorkflowDescribing status, got %s", wf.Status)
+	}
+
+	tasks, _ := database.GetTasksByWorkflow(wf.ID)
+	if len(tasks) != 1 || tasks[0].Type != models.TaskDescribe {
+		t.Errorf("Expected exactly one DESCRIBE task, got %d tasks", len(tasks))
+	}
+}
+
+func TestStartWorkflowFailsWhenPrepareBranchFails(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   "/nonexistent/path",
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "FAIL-001",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
+
+	_, err := engine.StartWorkflow(project, ticket)
+	if err == nil {
+		t.Fatal("Expected error when PrepareBranch fails, got nil")
+	}
+}
+
+func TestApproveDeploymentDoesNotUseDeployerAgent(t *testing.T) {
+	engine, database, repoDir := setupTestEngineWithRepo(t)
+	defer database.Close()
+
+	featureBranch := "feature/deploy-test"
+	setupCmds := [][]string{
+		{"git", "checkout", "-b", featureBranch},
+		{"git", "commit", "--allow-empty", "-m", "feature commit"},
+		{"git", "push", "-u", "origin", featureBranch},
+		{"git", "checkout", "master"},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "DEPLOY-001",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: featureBranch,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.ApproveDeployment(wf.ID); err != nil {
+		t.Fatalf("ApproveDeployment failed: %v", err)
+	}
+
+	tasks, _ := database.GetTasksByWorkflow(wf.ID)
+	for _, task := range tasks {
+		if task.Agent == "deployer" {
+			t.Error("Expected no task with agent 'deployer', but found one")
+		}
+		if task.Type == models.TaskDeploy && task.Agent != "system" {
+			t.Errorf("Expected deploy task agent='system', got %q", task.Agent)
+		}
+	}
+}
+
+func TestApproveDeploymentSetsWorkflowDone(t *testing.T) {
+	engine, database, repoDir := setupTestEngineWithRepo(t)
+	defer database.Close()
+
+	featureBranch := "feature/done-test"
+	setupCmds := [][]string{
+		{"git", "checkout", "-b", featureBranch},
+		{"git", "commit", "--allow-empty", "-m", "feature commit"},
+		{"git", "push", "-u", "origin", featureBranch},
+		{"git", "checkout", "master"},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "DONE-001",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: featureBranch,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.ApproveDeployment(wf.ID); err != nil {
+		t.Fatalf("ApproveDeployment failed: %v", err)
+	}
+
+	updatedWf, _ := database.GetWorkflow(wf.ID)
+	if updatedWf.Status != models.WorkflowDone {
+		t.Errorf("Expected WorkflowDone after successful deploy, got %s", updatedWf.Status)
+	}
+
+	updatedTicket, _ := database.GetTicketByID(ticket.ID)
+	if updatedTicket.Status != "done" {
+		t.Errorf("Expected ticket status 'done', got %q", updatedTicket.Status)
+	}
+}
+
+func TestApproveDeploymentSetsFailedOnMergeConflict(t *testing.T) {
+	engine, database, repoDir := setupTestEngineWithRepo(t)
+	defer database.Close()
+
+	writeFile := func(dir, name, content string) {
+		f, err := os.Create(dir + "/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		f.WriteString(content)
+	}
+
+	featureBranch := "feature/conflict-deploy"
+
+	writeFile(repoDir, "file.txt", "original")
+	setupCmds := [][]string{
+		{"git", "add", "file.txt"},
+		{"git", "commit", "-m", "add file"},
+		{"git", "push", "origin", "master"},
+		{"git", "checkout", "-b", featureBranch},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	writeFile(repoDir, "file.txt", "feature change")
+	featureCmds := [][]string{
+		{"git", "add", "file.txt"},
+		{"git", "commit", "-m", "feature change"},
+		{"git", "push", "-u", "origin", featureBranch},
+		{"git", "checkout", "master"},
+	}
+	for _, args := range featureCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	writeFile(repoDir, "file.txt", "master conflicting change")
+	masterCmds := [][]string{
+		{"git", "add", "file.txt"},
+		{"git", "commit", "-m", "master conflict"},
+		{"git", "push", "origin", "master"},
+	}
+	for _, args := range masterCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "CONFLICT-001",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: featureBranch,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.ApproveDeployment(wf.ID); err != nil {
+		t.Fatalf("ApproveDeployment returned unexpected error: %v", err)
+	}
+
+	updatedWf, _ := database.GetWorkflow(wf.ID)
+	if updatedWf.Status != models.WorkflowFailed {
+		t.Errorf("Expected WorkflowFailed after merge conflict, got %s", updatedWf.Status)
+	}
+
+	abortCmd := exec.Command("git", "merge", "--abort")
+	abortCmd.Dir = repoDir
+	abortCmd.Run()
 }
