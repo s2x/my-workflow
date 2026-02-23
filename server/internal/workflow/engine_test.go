@@ -275,6 +275,60 @@ func TestWorkflowExecutesBothTestAndReviewWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestAfterDeploySetsDoneStatusOnTicket(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowDeploying,
+		BranchName: "feature/test-123",
+	}
+	database.CreateWorkflow(wf)
+
+	deployOutput := `{"result":"DEPLOYED"}`
+	engine.afterDeploy(wf, deployOutput)
+
+	updatedTicket, err := database.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+	if updatedTicket.Status != "done" {
+		t.Errorf("Expected ticket status 'done' after afterDeploy, got %q", updatedTicket.Status)
+	}
+}
+
+func TestAfterDeployDoesNotSetDoneWhenDeployFails(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowDeploying,
+		BranchName: "feature/test-123",
+	}
+	database.CreateWorkflow(wf)
+
+	deployOutput := `{"result":"FAILED"}`
+	engine.afterDeploy(wf, deployOutput)
+
+	updatedTicket, err := database.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+	if updatedTicket.Status == "done" {
+		t.Error("Expected ticket status NOT 'done' when deployment fails")
+	}
+}
+
 func TestWorkflowTestFailureRetry(t *testing.T) {
 	engine, database := setupTestEngine(t)
 	defer database.Close()

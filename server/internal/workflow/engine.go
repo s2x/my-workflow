@@ -361,6 +361,7 @@ func (e *Engine) afterDeploy(wf *models.Workflow, output string) {
 
 	if err := json.Unmarshal([]byte(output), &deployResult); err == nil && deployResult.Result == "DEPLOYED" {
 		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowDone, "")
+		e.db.UpdateTicketStatus(wf.TicketID, "done")
 		e.chatMsg(wf.ID, "system", "", "Deployment successful!")
 	} else {
 		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "deployment failed")
@@ -459,6 +460,7 @@ func (e *Engine) ApproveDeployment(workflowID string) error {
 	e.db.UpdateTaskOutput(deployTask.ID, result.Output, result.Output)
 	e.db.UpdateTaskStatus(deployTask.ID, models.TaskCompleted)
 	e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowDone, "")
+	e.db.UpdateTicketStatus(wf.TicketID, "done")
 	e.chatMsg(wf.ID, "system", "", "Deployment successful!")
 	return nil
 }

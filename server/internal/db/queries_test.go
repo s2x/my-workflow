@@ -650,6 +650,80 @@ func TestGetWorkflowsByProjectAllDoneReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestUpdateTicketStatus(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+
+	if err := db.UpdateTicketStatus(ticket.ID, "done"); err != nil {
+		t.Fatalf("UpdateTicketStatus failed: %v", err)
+	}
+
+	retrieved, err := db.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+	if retrieved.Status != "done" {
+		t.Errorf("Expected status 'done', got %q", retrieved.Status)
+	}
+}
+
+func TestGetTicketsByProjectExcludesDone(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+
+	ticketDone := &models.Ticket{ProjectID: project.ID, Summary: "Done ticket"}
+	if err := db.CreateTicket(ticketDone); err != nil {
+		t.Fatalf("Failed to create done ticket: %v", err)
+	}
+	if err := db.UpdateTicketStatus(ticketDone.ID, "done"); err != nil {
+		t.Fatalf("Failed to set done status: %v", err)
+	}
+
+	ticketActive := &models.Ticket{ProjectID: project.ID, Summary: "Active ticket", Status: "in_progress"}
+	if err := db.CreateTicket(ticketActive); err != nil {
+		t.Fatalf("Failed to create active ticket: %v", err)
+	}
+
+	tickets, err := db.GetTicketsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetTicketsByProject failed: %v", err)
+	}
+
+	if len(tickets) != 1 {
+		t.Fatalf("Expected 1 ticket (done excluded), got %d", len(tickets))
+	}
+	if tickets[0].ID != ticketActive.ID {
+		t.Errorf("Expected active ticket, got ticket ID %q", tickets[0].ID)
+	}
+}
+
+func TestGetTicketsByProjectIncludesNonDone(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+
+	statuses := []string{"todo", "in_progress", "review", ""}
+	for _, status := range statuses {
+		t := &models.Ticket{ProjectID: project.ID, Summary: "Ticket " + status, Status: status}
+		db.CreateTicket(t)
+	}
+
+	tickets, err := db.GetTicketsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetTicketsByProject failed: %v", err)
+	}
+
+	if len(tickets) != len(statuses) {
+		t.Errorf("Expected %d tickets, got %d", len(statuses), len(tickets))
+	}
+}
+
 func TestGetWorkflowsByProjectNoTicketReturnsEmptyStrings(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

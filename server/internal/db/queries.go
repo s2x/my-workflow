@@ -137,13 +137,20 @@ func (db *DB) CreateTicket(t *models.Ticket) error {
 	return err
 }
 
+func (db *DB) UpdateTicketStatus(id string, status string) error {
+	_, err := db.conn.Exec(`
+		UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?
+	`, status, time.Now(), id)
+	return err
+}
+
 func (db *DB) GetTicketsByProject(projectID string) ([]models.Ticket, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, project_id, jira_key, summary, description, status, priority, assignee, labels,
 		       acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at,
 		       synced_at, created_at, updated_at
 		FROM tickets
-		WHERE project_id = ?
+		WHERE project_id = ? AND status != 'done'
 		ORDER BY updated_at DESC
 	`, projectID)
 	if err != nil {
