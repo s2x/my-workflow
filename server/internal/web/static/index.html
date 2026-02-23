@@ -829,6 +829,14 @@ async function loadWorkflow() {
       api('/workflows/' + currentWfId + '/tasks'),
       api('/workflows/' + currentWfId + '/chat')
     ]);
+    if (currentProjectName === '' && wf.project_id) {
+      try {
+        const project = await api('/projects/' + wf.project_id);
+        currentProjectName = project.name;
+        currentProjectId = wf.project_id;
+        updateBreadcrumb();
+      } catch {}
+    }
     renderWorkflow(wf, tasks, msgs);
   } catch {}
 }
