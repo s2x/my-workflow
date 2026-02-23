@@ -1,12 +1,18 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/piotr-halas/decodo-workflow/internal/agent"
 	"github.com/piotr-halas/decodo-workflow/internal/models"
+	"github.com/piotr-halas/decodo-workflow/internal/workflow"
 )
 
 func createTestProjectAndTicket(t *testing.T, database interface {
@@ -116,6 +122,86 @@ func TestListByProjectWorkflowBecomingDoneDisappearsFromList(t *testing.T) {
 
 	if len(workflows2) != 0 {
 		t.Fatalf("Expected 0 workflows after becoming DONE, got %d", len(workflows2))
+	}
+}
+
+func TestRejectHandlerWithoutBody(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	eng := workflow.NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	handler := NewWorkflowHandler(database, eng)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows/some-id/reject", nil)
+	req.SetPathValue("id", "some-id")
+	w := httptest.NewRecorder()
+
+	handler.Reject(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestRejectHandlerWithEmptyComment(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	eng := workflow.NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	handler := NewWorkflowHandler(database, eng)
+
+	body := bytes.NewBufferString(`{"comment":""}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows/some-id/reject", body)
+	req.SetPathValue("id", "some-id")
+	w := httptest.NewRecorder()
+
+	handler.Reject(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for empty comment, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "comment is required") {
+		t.Errorf("Expected 'comment is required' in body, got %s", w.Body.String())
+	}
+}
+
+func TestRejectHandlerWithCommentCallsEngine(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	project, ticket := createTestProjectAndTicket(t, database)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: "feature/test-123",
+		Spec:       "{}",
+	}
+	if err := database.CreateWorkflow(wf); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	eng := workflow.NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	handler := NewWorkflowHandler(database, eng)
+
+	body := bytes.NewBufferString(`{"comment":"Zły kod"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows/"+wf.ID+"/reject", body)
+	req.SetPathValue("id", wf.ID)
+	w := httptest.NewRecorder()
+
+	handler.Reject(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedWf, _ := database.GetWorkflow(wf.ID)
+	if updatedWf.Status != models.WorkflowCoding {
+		t.Errorf("Expected workflow status CODING after reject, got %s", updatedWf.Status)
 	}
 }
 

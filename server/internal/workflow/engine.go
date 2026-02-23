@@ -465,7 +465,7 @@ func (e *Engine) ApproveDeployment(workflowID string) error {
 	return nil
 }
 
-func (e *Engine) RejectDeployment(workflowID string) error {
+func (e *Engine) RejectDeployment(workflowID string, comment string) error {
 	wf, err := e.db.GetWorkflow(workflowID)
 	if err != nil {
 		return err
@@ -474,8 +474,45 @@ func (e *Engine) RejectDeployment(workflowID string) error {
 		return fmt.Errorf("workflow not found")
 	}
 
-	e.chatMsg(wf.ID, "user", "", "Deployment rejected.")
-	return e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "rejected by user")
+	e.chatMsg(wf.ID, "user", "", fmt.Sprintf("Deployment rejected. Reason: %s", comment))
+
+	if wf.RetryCount >= maxRetries {
+		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, fmt.Sprintf("rejected by user after max retries: %s", comment))
+		e.chatMsg(wf.ID, "system", "", "Workflow failed: max retries exceeded")
+		return nil
+	}
+
+	ticket, err := e.db.GetTicketByID(wf.TicketID)
+	if err != nil || ticket == nil {
+		return fmt.Errorf("ticket not found for workflow")
+	}
+
+	project, err := e.db.GetProject(wf.ProjectID)
+	if err != nil || project == nil {
+		return fmt.Errorf("project not found for workflow")
+	}
+
+	if err := e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowCoding, comment); err != nil {
+		return err
+	}
+
+	e.db.IncrementWorkflowRetry(wf.ID)
+
+	pb := NewPromptBuilder(project.BaseBranch)
+	prompt := pb.BuildRejectFixPrompt(ticket, wf.Spec, wf.BranchName, comment)
+	fixTask := &models.Task{
+		WorkflowID: wf.ID,
+		Type:       models.TaskFix,
+		Status:     models.TaskQueued,
+		Agent:      "coder",
+		Prompt:     prompt,
+	}
+	if err := e.db.CreateTask(fixTask); err != nil {
+		return err
+	}
+
+	e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Sending back to coder for fixes based on user feedback (retry %d/%d)", wf.RetryCount+1, maxRetries))
+	return nil
 }
 
 func (e *Engine) chatMsg(workflowID, role, agentType, content string) {

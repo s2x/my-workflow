@@ -329,6 +329,125 @@ func TestAfterDeployDoesNotSetDoneWhenDeployFails(t *testing.T) {
 	}
 }
 
+func TestRejectDeploymentTransitionsToCoding(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: "feature/test-123",
+		Spec:       "{}",
+		RetryCount: 0,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.RejectDeployment(wf.ID, "Zły kod"); err != nil {
+		t.Fatalf("RejectDeployment failed: %v", err)
+	}
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowCoding {
+		t.Errorf("Expected status WorkflowCoding after reject, got %s", wf.Status)
+	}
+}
+
+func TestRejectDeploymentCreatesFixTask(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: "feature/test-123",
+		Spec:       "{}",
+		RetryCount: 0,
+	}
+	database.CreateWorkflow(wf)
+
+	comment := "Kod nie spełnia wymagań"
+	if err := engine.RejectDeployment(wf.ID, comment); err != nil {
+		t.Fatalf("RejectDeployment failed: %v", err)
+	}
+
+	tasks, _ := database.GetTasksByWorkflow(wf.ID)
+	foundFixTask := false
+	for _, task := range tasks {
+		if task.Type == models.TaskFix {
+			foundFixTask = true
+			if task.Agent != "coder" {
+				t.Errorf("Expected fix task agent=coder, got %s", task.Agent)
+			}
+		}
+	}
+
+	if !foundFixTask {
+		t.Error("Expected fix task to be created after reject")
+	}
+}
+
+func TestRejectDeploymentIncrementsRetryCount(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: "feature/test-123",
+		Spec:       "{}",
+		RetryCount: 0,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.RejectDeployment(wf.ID, "Problem"); err != nil {
+		t.Fatalf("RejectDeployment failed: %v", err)
+	}
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.RetryCount != 1 {
+		t.Errorf("Expected RetryCount=1 after reject, got %d", wf.RetryCount)
+	}
+}
+
+func TestRejectDeploymentFailsWhenMaxRetriesExceeded(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: "feature/test-123",
+		Spec:       "{}",
+		RetryCount: maxRetries,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.RejectDeployment(wf.ID, "Za dużo prób"); err != nil {
+		t.Fatalf("RejectDeployment failed: %v", err)
+	}
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowFailed {
+		t.Errorf("Expected status WorkflowFailed when maxRetries exceeded, got %s", wf.Status)
+	}
+}
+
 func TestWorkflowTestFailureRetry(t *testing.T) {
 	engine, database := setupTestEngine(t)
 	defer database.Close()

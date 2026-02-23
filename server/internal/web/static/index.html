@@ -331,7 +331,14 @@
       <p>Code is ready. Approve deployment to staging?</p>
       <div class="approval-btns">
         <button class="btn btn-green" onclick="approveWf()">Approve</button>
-        <button class="btn btn-red" onclick="rejectWf()">Reject</button>
+        <button class="btn btn-red" onclick="showRejectForm()">Reject</button>
+      </div>
+      <div id="wf-reject-form" class="hidden" style="margin-top:12px">
+        <textarea id="wf-reject-comment" rows="3" placeholder="Podaj powód odrzucenia..." style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-family:inherit;resize:vertical"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn btn-red" onclick="confirmRejectWf()">Potwierdź odrzucenie</button>
+          <button class="btn" onclick="cancelRejectWf()">Anuluj</button>
+        </div>
       </div>
     </div>
     <div class="grid-2">
@@ -861,7 +868,27 @@ async function retryTask(taskId) {
 }
 
 async function approveWf() { await api('/workflows/' + currentWfId + '/approve', {method:'POST'}); loadWorkflow(); }
-async function rejectWf() { await api('/workflows/' + currentWfId + '/reject', {method:'POST'}); loadWorkflow(); }
+
+function showRejectForm() {
+  document.getElementById('wf-reject-form').classList.remove('hidden');
+  document.getElementById('wf-reject-comment').focus();
+}
+
+function cancelRejectWf() {
+  document.getElementById('wf-reject-form').classList.add('hidden');
+  document.getElementById('wf-reject-comment').value = '';
+}
+
+async function confirmRejectWf() {
+  const comment = document.getElementById('wf-reject-comment').value.trim();
+  if (!comment) {
+    alert('Musisz podać powód odrzucenia.');
+    return;
+  }
+  await api('/workflows/' + currentWfId + '/reject', {method:'POST', body: JSON.stringify({comment})});
+  cancelRejectWf();
+  loadWorkflow();
+}
 
 function showTaskLogs(taskId) {
   currentLogTaskId = taskId;

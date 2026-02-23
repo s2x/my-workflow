@@ -145,6 +145,21 @@ func (pb *PromptBuilder) BuildReviewPrompt(ticket *models.Ticket, branchName str
 	return b.String()
 }
 
+func (pb *PromptBuilder) BuildRejectFixPrompt(ticket *models.Ticket, spec string, branchName string, rejectComment string) string {
+	var b strings.Builder
+	b.WriteString("Napraw problemy zgłoszone przez użytkownika podczas odrzucenia wdrożenia.\n\n")
+	b.WriteString(fmt.Sprintf("## Ticket: %s - %s\n", ticket.JiraKey, ticket.Summary))
+	b.WriteString(fmt.Sprintf("## Branch: %s\n\n", branchName))
+	b.WriteString(fmt.Sprintf("## Powód odrzucenia przez użytkownika\n%s\n\n", rejectComment))
+	b.WriteString(fmt.Sprintf("## Oryginalna specyfikacja\n%s\n\n", spec))
+	b.WriteString("## Instrukcje\n")
+	b.WriteString(fmt.Sprintf("1. Checkout branch: %s\n", branchName))
+	b.WriteString("2. Napraw problemy opisane przez użytkownika w powodzie odrzucenia\n")
+	b.WriteString("3. Uruchom testy\n")
+	b.WriteString("4. Commituj i pushuj poprawki\n")
+	return b.String()
+}
+
 func (pb *PromptBuilder) BuildFixPrompt(ticket *models.Ticket, spec string, branchName string, issues string) string {
 	var b strings.Builder
 	b.WriteString("Napraw problemy znalezione w poprzedniej iteracji.\n\n")

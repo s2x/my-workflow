@@ -56,25 +56,6 @@
           "find *": "allow"
         }
       }
-    },
-    "deployer": {
-      "mode": "primary",
-      "description": "Deploys code to staging branch via git merge",
-      "model": "google/gemini-2.5-flash",
-      "tools": {
-        "write": false,
-        "edit": false
-      },
-      "permission": {
-        "bash": {
-          "*": "deny",
-          "git checkout*": "allow",
-          "git pull*": "allow",
-          "git merge*": "allow",
-          "git push*": "allow",
-          "git status*": "allow"
-        }
-      }
     }
   }
 }

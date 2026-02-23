@@ -154,9 +154,24 @@ func (h *WorkflowHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "approved"})
 }
 
+type RejectWorkflowRequest struct {
+	Comment string `json:"comment"`
+}
+
 func (h *WorkflowHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := h.engine.RejectDeployment(id); err != nil {
+
+	var req RejectWorkflowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.Comment == "" {
+		http.Error(w, "comment is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.engine.RejectDeployment(id, req.Comment); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
