@@ -348,6 +348,9 @@
         </div>
       </div>
     </div>
+    <div id="wf-restart" class="hidden" style="margin-bottom:16px">
+      <button class="btn btn-red" onclick="restartWf()">Restart Workflow</button>
+    </div>
     <div class="grid-2">
       <div>
         <h2 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Chat</h2>
@@ -850,6 +853,10 @@ function renderWorkflow(wf, tasks, msgs) {
   if (wf.status === 'AWAITING_APPROVAL') appr.classList.remove('hidden');
   else appr.classList.add('hidden');
 
+  const restartEl = document.getElementById('wf-restart');
+  if (wf.status !== 'DEPLOYING' && wf.status !== 'DONE') restartEl.classList.remove('hidden');
+  else restartEl.classList.add('hidden');
+
   const chatEl = document.getElementById('wf-chat');
   if (!msgs.length) chatEl.innerHTML = '<p class="empty">No messages yet.</p>';
   else {
@@ -894,6 +901,16 @@ async function retryTask(taskId) {
 }
 
 async function approveWf() { await api('/workflows/' + currentWfId + '/approve', {method:'POST'}); loadWorkflow(); }
+
+async function restartWf() {
+  if (!confirm('Czy na pewno chcesz zrestartować workflow? Spowoduje to usunięcie feature branch i ponowne uruchomienie całego procesu.')) return;
+  try {
+    await api('/workflows/' + currentWfId + '/restart', {method:'POST'});
+    loadWorkflow();
+  } catch(err) {
+    alert('Failed to restart workflow: ' + err.message);
+  }
+}
 
 function showRejectForm() {
   document.getElementById('wf-reject-form').classList.remove('hidden');

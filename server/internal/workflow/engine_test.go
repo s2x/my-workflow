@@ -3,6 +3,7 @@ package workflow
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/piotr-halas/decodo-workflow/internal/agent"
@@ -445,6 +446,232 @@ func TestRejectDeploymentFailsWhenMaxRetriesExceeded(t *testing.T) {
 	wf, _ = database.GetWorkflow(wf.ID)
 	if wf.Status != models.WorkflowFailed {
 		t.Errorf("Expected status WorkflowFailed when maxRetries exceeded, got %s", wf.Status)
+	}
+}
+
+func TestRestartWorkflowFromFailed(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowFailed,
+		BranchName: "",
+		RetryCount: 2,
+	}
+	database.CreateWorkflow(wf)
+
+	oldTask := &models.Task{
+		WorkflowID: wf.ID,
+		Type:       models.TaskCode,
+		Status:     models.TaskFailed,
+		Agent:      "coder",
+		Prompt:     "old prompt",
+	}
+	database.CreateTask(oldTask)
+
+	if err := engine.RestartWorkflow(wf.ID); err != nil {
+		t.Fatalf("RestartWorkflow failed: %v", err)
+	}
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowDescribing {
+		t.Errorf("Expected status DESCRIBING after restart, got %s", wf.Status)
+	}
+	if wf.RetryCount != 0 {
+		t.Errorf("Expected retry_count=0 after restart, got %d", wf.RetryCount)
+	}
+	if wf.BranchName != "" {
+		t.Errorf("Expected empty branch_name after restart, got %q", wf.BranchName)
+	}
+
+	tasks, _ := database.GetTasksByWorkflow(wf.ID)
+	if len(tasks) != 1 {
+		t.Fatalf("Expected exactly 1 task (DESCRIBE) after restart, got %d", len(tasks))
+	}
+	if tasks[0].Type != models.TaskDescribe {
+		t.Errorf("Expected DESCRIBE task after restart, got %s", tasks[0].Type)
+	}
+}
+
+func TestRestartWorkflowFromAwaitingApproval(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowAwaitingApproval,
+		BranchName: "",
+		RetryCount: 1,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.RestartWorkflow(wf.ID); err != nil {
+		t.Fatalf("RestartWorkflow failed: %v", err)
+	}
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowDescribing {
+		t.Errorf("Expected status DESCRIBING, got %s", wf.Status)
+	}
+	if wf.RetryCount != 0 {
+		t.Errorf("Expected retry_count=0, got %d", wf.RetryCount)
+	}
+}
+
+func TestRestartWorkflowFromCoding(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowCoding,
+		BranchName: "",
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.RestartWorkflow(wf.ID); err != nil {
+		t.Fatalf("RestartWorkflow from CODING failed: %v", err)
+	}
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowDescribing {
+		t.Errorf("Expected status DESCRIBING, got %s", wf.Status)
+	}
+}
+
+func TestRestartWorkflowDeployingForbidden(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  ticket.ID,
+		Status:    models.WorkflowDeploying,
+	}
+	database.CreateWorkflow(wf)
+
+	err := engine.RestartWorkflow(wf.ID)
+	if err == nil {
+		t.Fatal("Expected error when restarting DEPLOYING workflow")
+	}
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowDeploying {
+		t.Errorf("Expected workflow status unchanged (DEPLOYING), got %s", wf.Status)
+	}
+}
+
+func TestRestartWorkflowDoneForbidden(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  ticket.ID,
+		Status:    models.WorkflowDone,
+	}
+	database.CreateWorkflow(wf)
+
+	err := engine.RestartWorkflow(wf.ID)
+	if err == nil {
+		t.Fatal("Expected error when restarting DONE workflow")
+	}
+}
+
+func TestRestartWorkflowNonExistent(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	err := engine.RestartWorkflow("nonexistent-id")
+	if err == nil {
+		t.Fatal("Expected error for nonexistent workflow")
+	}
+}
+
+func TestRestartWorkflowDeletesOldTasks(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  ticket.ID,
+		Status:    models.WorkflowFailed,
+	}
+	database.CreateWorkflow(wf)
+
+	for i := 0; i < 3; i++ {
+		database.CreateTask(&models.Task{
+			WorkflowID: wf.ID,
+			Type:       models.TaskCode,
+			Status:     models.TaskFailed,
+			Agent:      "coder",
+		})
+	}
+
+	if err := engine.RestartWorkflow(wf.ID); err != nil {
+		t.Fatalf("RestartWorkflow failed: %v", err)
+	}
+
+	tasks, _ := database.GetTasksByWorkflow(wf.ID)
+	for _, task := range tasks {
+		if task.Type != models.TaskDescribe {
+			t.Errorf("Expected only DESCRIBE task after restart, found %s", task.Type)
+		}
+	}
+}
+
+func TestRestartWorkflowAddsChatMessage(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  ticket.ID,
+		Status:    models.WorkflowFailed,
+	}
+	database.CreateWorkflow(wf)
+
+	if err := engine.RestartWorkflow(wf.ID); err != nil {
+		t.Fatalf("RestartWorkflow failed: %v", err)
+	}
+
+	msgs, _ := database.GetChatMessages(wf.ID)
+	if len(msgs) == 0 {
+		t.Fatal("Expected chat message after restart, got none")
+	}
+	found := false
+	for _, m := range msgs {
+		if strings.Contains(m.Content, "restart") || strings.Contains(m.Content, "Restart") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("Expected a chat message mentioning restart")
 	}
 }
 

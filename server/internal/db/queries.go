@@ -623,6 +623,22 @@ func (db *DB) GetTaskLogsAfter(taskID string, afterTimestamp time.Time) ([]model
 	return logs, rows.Err()
 }
 
+func (db *DB) ResetWorkflow(id string) error {
+	_, err := db.conn.Exec(`
+		UPDATE workflows SET status = 'CREATED', branch_name = '', retry_count = 0, error = '', updated_at = ? WHERE id = ?
+	`, time.Now(), id)
+	return err
+}
+
+func (db *DB) DeleteTasksByWorkflow(workflowID string) error {
+	_, err := db.conn.Exec(`DELETE FROM task_logs WHERE task_id IN (SELECT id FROM tasks WHERE workflow_id = ?)`, workflowID)
+	if err != nil {
+		return err
+	}
+	_, err = db.conn.Exec(`DELETE FROM tasks WHERE workflow_id = ?`, workflowID)
+	return err
+}
+
 func (db *DB) RetryTask(id string) error {
 	_, err := db.conn.Exec(`
 		UPDATE tasks 

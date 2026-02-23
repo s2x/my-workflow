@@ -133,6 +133,51 @@ func (r *Runner) gitEnsureBranch(repoPath string, branch string, taskID string) 
 	return nil
 }
 
+func (r *Runner) DeleteBranch(repoPath, featureBranch, baseBranch string) error {
+	if featureBranch == "" {
+		return fmt.Errorf("featureBranch cannot be empty")
+	}
+	if !strings.HasPrefix(featureBranch, "feature/") {
+		return fmt.Errorf("featureBranch %q must start with 'feature/'", featureBranch)
+	}
+
+	checkCmd := exec.Command("git", "rev-parse", "--verify", featureBranch)
+	checkCmd.Dir = repoPath
+	branchExists := checkCmd.Run() == nil
+
+	if branchExists {
+		if err := r.gitCheckoutBranch(repoPath, baseBranch, ""); err != nil {
+			return fmt.Errorf("failed to checkout base branch: %w", err)
+		}
+
+		deleteLocalCmd := exec.Command("git", "branch", "-D", featureBranch)
+		deleteLocalCmd.Dir = repoPath
+		if out, err := deleteLocalCmd.CombinedOutput(); err != nil {
+			r.logger.Warn("failed to delete local feature branch", "branch", featureBranch, "error", err, "output", string(out))
+		}
+
+		deleteRemoteCmd := exec.Command("git", "push", "origin", "--delete", featureBranch)
+		deleteRemoteCmd.Dir = repoPath
+		deleteRemoteOutput, err := deleteRemoteCmd.CombinedOutput()
+		if err != nil && !strings.Contains(string(deleteRemoteOutput), "remote ref does not exist") {
+			r.logger.Warn("failed to delete remote feature branch", "branch", featureBranch, "error", err, "output", string(deleteRemoteOutput))
+		}
+	} else {
+		if err := r.gitCheckoutBranch(repoPath, baseBranch, ""); err != nil {
+			return fmt.Errorf("failed to checkout base branch: %w", err)
+		}
+	}
+
+	createCmd := exec.Command("git", "checkout", "-b", featureBranch)
+	createCmd.Dir = repoPath
+	if out, err := createCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create branch %s: %w\nOutput: %s", featureBranch, err, string(out))
+	}
+
+	r.logger.Info("branch recreated from base", "branch", featureBranch, "base", baseBranch)
+	return nil
+}
+
 func (r *Runner) Deploy(repoPath, featureBranch, baseBranch, taskID string) RunResult {
 	start := time.Now()
 

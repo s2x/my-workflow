@@ -45,6 +45,7 @@ func NewRouter(database *db.DB, engine *workflow.Engine) http.Handler {
 	mux.HandleFunc("GET /api/workflows/{id}/chat", workflowHandler.GetChat)
 	mux.HandleFunc("POST /api/workflows/{id}/approve", workflowHandler.Approve)
 	mux.HandleFunc("POST /api/workflows/{id}/reject", workflowHandler.Reject)
+	mux.HandleFunc("POST /api/workflows/{id}/restart", workflowHandler.Restart)
 
 	mux.HandleFunc("POST /api/tasks/{id}/retry", taskHandler.Retry)
 	mux.HandleFunc("GET /api/tasks/{id}/logs/stream", taskHandler.StreamLogs)

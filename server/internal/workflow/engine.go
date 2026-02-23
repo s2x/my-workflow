@@ -515,6 +515,64 @@ func (e *Engine) RejectDeployment(workflowID string, comment string) error {
 	return nil
 }
 
+func (e *Engine) RestartWorkflow(workflowID string) error {
+	wf, err := e.db.GetWorkflow(workflowID)
+	if err != nil {
+		return err
+	}
+	if wf == nil {
+		return fmt.Errorf("workflow not found")
+	}
+	if wf.Status == models.WorkflowDeploying || wf.Status == models.WorkflowDone {
+		return fmt.Errorf("cannot restart workflow in status %s", wf.Status)
+	}
+
+	project, err := e.db.GetProject(wf.ProjectID)
+	if err != nil || project == nil {
+		return fmt.Errorf("project not found for workflow")
+	}
+
+	if wf.BranchName != "" {
+		if err := e.runner.DeleteBranch(project.RepoPath, wf.BranchName, project.BaseBranch); err != nil {
+			e.logger.Warn("failed to delete branch during restart", "branch", wf.BranchName, "error", err)
+		}
+	}
+
+	if err := e.db.DeleteTasksByWorkflow(workflowID); err != nil {
+		return fmt.Errorf("failed to delete tasks: %w", err)
+	}
+
+	if err := e.db.ResetWorkflow(workflowID); err != nil {
+		return fmt.Errorf("failed to reset workflow: %w", err)
+	}
+
+	e.chatMsg(workflowID, "system", "", "Workflow restarted. Starting from the beginning.")
+
+	ticket, err := e.db.GetTicketByID(wf.TicketID)
+	if err != nil || ticket == nil {
+		return fmt.Errorf("ticket not found for workflow")
+	}
+
+	pb := NewPromptBuilder(project.BaseBranch)
+	prompt := pb.BuildDescribePrompt(ticket)
+	task := &models.Task{
+		WorkflowID: workflowID,
+		Type:       models.TaskDescribe,
+		Status:     models.TaskQueued,
+		Agent:      "descriptor",
+		Prompt:     prompt,
+	}
+	if err := e.db.CreateTask(task); err != nil {
+		return fmt.Errorf("creating describe task: %w", err)
+	}
+
+	if err := e.db.UpdateWorkflowStatus(workflowID, models.WorkflowDescribing, ""); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (e *Engine) chatMsg(workflowID, role, agentType, content string) {
 	e.db.CreateChatMessage(&models.ChatMessage{
 		WorkflowID: workflowID,

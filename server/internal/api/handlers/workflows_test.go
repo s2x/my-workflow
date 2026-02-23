@@ -205,6 +205,98 @@ func TestRejectHandlerWithCommentCallsEngine(t *testing.T) {
 	}
 }
 
+func TestRestartHandlerSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	project, ticket := createTestProjectAndTicket(t, database)
+
+	wf := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  ticket.ID,
+		Status:    models.WorkflowFailed,
+	}
+	if err := database.CreateWorkflow(wf); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	eng := workflow.NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	handler := NewWorkflowHandler(database, eng)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows/"+wf.ID+"/restart", nil)
+	req.SetPathValue("id", wf.ID)
+	w := httptest.NewRecorder()
+
+	handler.Restart(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp["status"] != "restarted" {
+		t.Errorf("Expected status=restarted, got %q", resp["status"])
+	}
+
+	updatedWf, _ := database.GetWorkflow(wf.ID)
+	if updatedWf.Status != models.WorkflowDescribing {
+		t.Errorf("Expected workflow status DESCRIBING after restart, got %s", updatedWf.Status)
+	}
+}
+
+func TestRestartHandlerNonExistentWorkflow(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	eng := workflow.NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	handler := NewWorkflowHandler(database, eng)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows/nonexistent/restart", nil)
+	req.SetPathValue("id", "nonexistent")
+	w := httptest.NewRecorder()
+
+	handler.Restart(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestRestartHandlerDeployingForbidden(t *testing.T) {
+	database := setupTestDB(t)
+	defer database.Close()
+
+	project, ticket := createTestProjectAndTicket(t, database)
+
+	wf := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  ticket.ID,
+		Status:    models.WorkflowDeploying,
+	}
+	if err := database.CreateWorkflow(wf); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+
+	runner := agent.NewRunner("opencode", "qwen", slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	eng := workflow.NewEngine(database, runner, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	handler := NewWorkflowHandler(database, eng)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows/"+wf.ID+"/restart", nil)
+	req.SetPathValue("id", wf.ID)
+	w := httptest.NewRecorder()
+
+	handler.Restart(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500 for DEPLOYING workflow, got %d", w.Code)
+	}
+}
+
 func TestListByProjectReturnsEmptyArrayWhenNone(t *testing.T) {
 	database := setupTestDB(t)
 	defer database.Close()

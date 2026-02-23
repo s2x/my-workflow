@@ -154,6 +154,16 @@ func (h *WorkflowHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "approved"})
 }
 
+func (h *WorkflowHandler) Restart(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.engine.RestartWorkflow(id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "restarted"})
+}
+
 type RejectWorkflowRequest struct {
 	Comment string `json:"comment"`
 }

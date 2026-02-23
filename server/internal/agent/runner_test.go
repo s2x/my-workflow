@@ -332,6 +332,90 @@ func TestDeployFailsOnMergeConflict(t *testing.T) {
 	abortCmd.Run()
 }
 
+func TestDeleteBranchFailsWithEmptyName(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("", "", logger)
+
+	err := runner.DeleteBranch("/tmp", "", "master")
+	if err == nil {
+		t.Fatal("Expected error for empty featureBranch")
+	}
+}
+
+func TestDeleteBranchFailsWithNonFeaturePrefix(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("", "", logger)
+
+	err := runner.DeleteBranch("/tmp", "main", "master")
+	if err == nil {
+		t.Fatal("Expected error for branch not starting with 'feature/'")
+	}
+	if !strings.Contains(err.Error(), "feature/") {
+		t.Errorf("Expected error mentioning 'feature/', got: %v", err)
+	}
+}
+
+func TestDeleteBranchWhenBranchDoesNotExistLocally(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("", "", logger)
+
+	err := runner.DeleteBranch(dir, "feature/nonexistent", "master")
+	if err != nil {
+		t.Fatalf("Expected no error when branch does not exist locally, got: %v", err)
+	}
+
+	currentBranchCmd := exec.Command("git", "branch", "--show-current")
+	currentBranchCmd.Dir = dir
+	out, _ := currentBranchCmd.Output()
+	currentBranch := strings.TrimSpace(string(out))
+	if currentBranch != "feature/nonexistent" {
+		t.Errorf("Expected to be on feature/nonexistent after DeleteBranch, got: %s", currentBranch)
+	}
+}
+
+func TestDeleteBranchRecreatesFromBase(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	setupCmds := [][]string{
+		{"git", "checkout", "-b", "feature/to-delete"},
+		{"git", "commit", "--allow-empty", "-m", "feature commit"},
+		{"git", "checkout", "master"},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	checkoutFeature := exec.Command("git", "checkout", "feature/to-delete")
+	checkoutFeature.Dir = dir
+	if out, err := checkoutFeature.CombinedOutput(); err != nil {
+		t.Fatalf("checkout feature failed: %v\nOutput: %s", err, string(out))
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("", "", logger)
+
+	err := runner.DeleteBranch(dir, "feature/to-delete", "master")
+	if err != nil {
+		t.Fatalf("DeleteBranch failed: %v", err)
+	}
+
+	currentBranchCmd := exec.Command("git", "branch", "--show-current")
+	currentBranchCmd.Dir = dir
+	out, _ := currentBranchCmd.Output()
+	currentBranch := strings.TrimSpace(string(out))
+	if currentBranch != "feature/to-delete" {
+		t.Errorf("Expected to be on feature/to-delete after recreation, got: %s", currentBranch)
+	}
+}
+
 type deployTestRunner struct {
 	*Runner
 	dir string
