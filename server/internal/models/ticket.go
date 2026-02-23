@@ -26,4 +26,16 @@ type Ticket struct {
 	SyncedAt           time.Time `json:"synced_at"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
+	AIGenerated        bool      `json:"ai_generated"`
+	AIMetadata         string    `json:"ai_metadata"`
+	RefinementCount    int       `json:"refinement_count"`
+}
+
+type GeneratedTicket struct {
+	Title                string   `json:"title"`
+	BusinessDescription  string   `json:"business_description"`
+	TechnicalDescription string   `json:"technical_description"`
+	Priority             string   `json:"priority"`
+	Complexity           string   `json:"complexity"`
+	AffectedComponents   []string `json:"affected_components"`
 }

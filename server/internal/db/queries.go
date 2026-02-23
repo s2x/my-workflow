@@ -112,10 +112,13 @@ func (db *DB) UpsertTicket(t *models.Ticket) error {
 		t.ID = uuid.New().String()
 	}
 	now := time.Now()
+	if t.AIMetadata == "" {
+		t.AIMetadata = "{}"
+	}
 
 	_, err := db.conn.Exec(`
-		INSERT INTO tickets (id, project_id, jira_key, summary, description, status, priority, assignee, labels, acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at, synced_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO tickets (id, project_id, jira_key, summary, description, status, priority, assignee, labels, acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at, synced_at, created_at, updated_at, ai_generated, ai_metadata, refinement_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(jira_key) DO UPDATE SET
 			summary = excluded.summary,
 			description = excluded.description,
@@ -129,12 +132,16 @@ func (db *DB) UpsertTicket(t *models.Ticket) error {
 			raw_json = excluded.raw_json,
 			jira_updated_at = excluded.jira_updated_at,
 			synced_at = excluded.synced_at,
-			updated_at = excluded.updated_at
+			updated_at = excluded.updated_at,
+			ai_generated = excluded.ai_generated,
+			ai_metadata = excluded.ai_metadata,
+			refinement_count = excluded.refinement_count
 	`,
 		t.ID, t.ProjectID, t.JiraKey, t.Summary, t.Description, t.Status,
 		t.Priority, t.Assignee, t.Labels, t.AcceptanceCriteria,
 		t.TicketType, t.ProjectKey, t.Source, t.RawJSON,
 		t.JiraUpdatedAt, now, now, now,
+		t.AIGenerated, t.AIMetadata, t.RefinementCount,
 	)
 	return err
 }
@@ -147,6 +154,9 @@ func (db *DB) CreateTicket(t *models.Ticket) error {
 	if t.JiraKey == "" {
 		t.JiraKey = "LOCAL-" + t.ID[:8]
 	}
+	if t.AIMetadata == "" {
+		t.AIMetadata = "{}"
+	}
 	now := time.Now()
 	t.CreatedAt = now
 	t.UpdatedAt = now
@@ -154,13 +164,14 @@ func (db *DB) CreateTicket(t *models.Ticket) error {
 	t.SyncedAt = now
 
 	_, err := db.conn.Exec(`
-		INSERT INTO tickets (id, project_id, jira_key, summary, description, status, priority, assignee, labels, acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at, synced_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO tickets (id, project_id, jira_key, summary, description, status, priority, assignee, labels, acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at, synced_at, created_at, updated_at, ai_generated, ai_metadata, refinement_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		t.ID, t.ProjectID, t.JiraKey, t.Summary, t.Description, t.Status,
 		t.Priority, t.Assignee, t.Labels, t.AcceptanceCriteria,
 		t.TicketType, t.ProjectKey, t.Source, t.RawJSON,
 		t.JiraUpdatedAt, t.SyncedAt, t.CreatedAt, t.UpdatedAt,
+		t.AIGenerated, t.AIMetadata, t.RefinementCount,
 	)
 	return err
 }
@@ -176,7 +187,7 @@ func (db *DB) GetTicketsByProject(projectID string) ([]models.Ticket, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, project_id, jira_key, summary, description, status, priority, assignee, labels,
 		       acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at,
-		       synced_at, created_at, updated_at
+		       synced_at, created_at, updated_at, ai_generated, ai_metadata, refinement_count
 		FROM tickets
 		WHERE project_id = ? AND status != 'done'
 		ORDER BY updated_at DESC
@@ -194,6 +205,7 @@ func (db *DB) GetTicketsByProject(projectID string) ([]models.Ticket, error) {
 			&t.Priority, &t.Assignee, &t.Labels, &t.AcceptanceCriteria,
 			&t.TicketType, &t.ProjectKey, &t.Source, &t.RawJSON, &t.JiraUpdatedAt,
 			&t.SyncedAt, &t.CreatedAt, &t.UpdatedAt,
+			&t.AIGenerated, &t.AIMetadata, &t.RefinementCount,
 		); err != nil {
 			return nil, err
 		}
@@ -206,7 +218,7 @@ func (db *DB) GetTickets() ([]models.Ticket, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, project_id, jira_key, summary, description, status, priority, assignee, labels,
 		       acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at,
-		       synced_at, created_at, updated_at
+		       synced_at, created_at, updated_at, ai_generated, ai_metadata, refinement_count
 		FROM tickets
 		ORDER BY updated_at DESC
 	`)
@@ -223,6 +235,7 @@ func (db *DB) GetTickets() ([]models.Ticket, error) {
 			&t.Priority, &t.Assignee, &t.Labels, &t.AcceptanceCriteria,
 			&t.TicketType, &t.ProjectKey, &t.Source, &t.RawJSON, &t.JiraUpdatedAt,
 			&t.SyncedAt, &t.CreatedAt, &t.UpdatedAt,
+			&t.AIGenerated, &t.AIMetadata, &t.RefinementCount,
 		); err != nil {
 			return nil, err
 		}
@@ -236,7 +249,7 @@ func (db *DB) GetTicketByKey(jiraKey string) (*models.Ticket, error) {
 	err := db.conn.QueryRow(`
 		SELECT id, project_id, jira_key, summary, description, status, priority, assignee, labels,
 		       acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at,
-		       synced_at, created_at, updated_at
+		       synced_at, created_at, updated_at, ai_generated, ai_metadata, refinement_count
 		FROM tickets
 		WHERE jira_key = ?
 	`, jiraKey).Scan(
@@ -244,6 +257,7 @@ func (db *DB) GetTicketByKey(jiraKey string) (*models.Ticket, error) {
 		&t.Priority, &t.Assignee, &t.Labels, &t.AcceptanceCriteria,
 		&t.TicketType, &t.ProjectKey, &t.Source, &t.RawJSON, &t.JiraUpdatedAt,
 		&t.SyncedAt, &t.CreatedAt, &t.UpdatedAt,
+		&t.AIGenerated, &t.AIMetadata, &t.RefinementCount,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -259,7 +273,7 @@ func (db *DB) GetTicketByID(id string) (*models.Ticket, error) {
 	err := db.conn.QueryRow(`
 		SELECT id, project_id, jira_key, summary, description, status, priority, assignee, labels,
 		       acceptance_criteria, ticket_type, project_key, source, raw_json, jira_updated_at,
-		       synced_at, created_at, updated_at
+		       synced_at, created_at, updated_at, ai_generated, ai_metadata, refinement_count
 		FROM tickets
 		WHERE id = ?
 	`, id).Scan(
@@ -267,6 +281,7 @@ func (db *DB) GetTicketByID(id string) (*models.Ticket, error) {
 		&t.Priority, &t.Assignee, &t.Labels, &t.AcceptanceCriteria,
 		&t.TicketType, &t.ProjectKey, &t.Source, &t.RawJSON, &t.JiraUpdatedAt,
 		&t.SyncedAt, &t.CreatedAt, &t.UpdatedAt,
+		&t.AIGenerated, &t.AIMetadata, &t.RefinementCount,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil

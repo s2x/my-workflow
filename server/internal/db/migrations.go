@@ -109,5 +109,15 @@ func (db *DB) migrate() error {
 		return fmt.Errorf("adding runner column: %w", err)
 	}
 
+	if err := addColumnIfNotExists("tickets", "ai_generated", "BOOLEAN NOT NULL DEFAULT FALSE"); err != nil {
+		return fmt.Errorf("adding ai_generated column: %w", err)
+	}
+	if err := addColumnIfNotExists("tickets", "ai_metadata", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		return fmt.Errorf("adding ai_metadata column: %w", err)
+	}
+	if err := addColumnIfNotExists("tickets", "refinement_count", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("adding refinement_count column: %w", err)
+	}
+
 	return nil
 }

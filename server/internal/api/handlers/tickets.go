@@ -26,6 +26,9 @@ type CreateTicketRequest struct {
 	AcceptanceCriteria string `json:"acceptance_criteria"`
 	TicketType         string `json:"ticket_type"`
 	Labels             string `json:"labels"`
+	AIGenerated        bool   `json:"ai_generated"`
+	AIMetadata         string `json:"ai_metadata"`
+	RefinementCount    int    `json:"refinement_count"`
 }
 
 func (h *TicketHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +44,16 @@ func (h *TicketHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	source := "manual"
+	if req.AIGenerated {
+		source = "ai"
+	}
+
+	aiMetadata := req.AIMetadata
+	if aiMetadata == "" {
+		aiMetadata = "{}"
+	}
+
 	ticket := &models.Ticket{
 		ProjectID:          projectID,
 		Summary:            req.Summary,
@@ -50,8 +63,11 @@ func (h *TicketHandler) Create(w http.ResponseWriter, r *http.Request) {
 		TicketType:         req.TicketType,
 		Labels:             req.Labels,
 		Status:             models.TicketStatusOpen,
-		Source:             "manual",
+		Source:             source,
 		RawJSON:            "{}",
+		AIGenerated:        req.AIGenerated,
+		AIMetadata:         aiMetadata,
+		RefinementCount:    req.RefinementCount,
 	}
 
 	if err := h.db.CreateTicket(ticket); err != nil {

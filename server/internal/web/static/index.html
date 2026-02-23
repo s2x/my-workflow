@@ -134,6 +134,36 @@
     .project-card .project-path { font-size: 11px; color: var(--muted); font-family: monospace; margin-top: 4px; }
     .project-card .project-meta { display: flex; gap: 12px; margin-top: 6px; }
     .ticket-card { cursor: pointer; }
+    .ai-badge { font-size: 14px; margin-right: 4px; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; width: 560px; max-width: 96vw; max-height: 90vh; overflow-y: auto; }
+    .modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .modal-subtitle { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
+    .modal-steps { display: flex; gap: 6px; margin-bottom: 24px; }
+    .modal-step-dot { width: 28px; height: 4px; border-radius: 2px; background: #3f3f46; }
+    .modal-step-dot.done { background: var(--success); }
+    .modal-step-dot.active { background: var(--primary); }
+    .modal-actions { display: flex; gap: 8px; margin-top: 20px; }
+    .processing-list { list-style: none; padding: 0; }
+    .processing-list li { padding: 8px 0; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .processing-list li.active { color: var(--fg); }
+    .processing-list li.done { color: var(--success); }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .check { color: var(--success); font-size: 14px; flex-shrink: 0; }
+    .preview-section { margin-bottom: 16px; }
+    .preview-section label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .preview-section textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--fg); font-size: 12px; outline: none; font-family: inherit; resize: vertical; }
+    .preview-section textarea:focus { border-color: var(--primary); }
+    .preview-meta { display: flex; gap: 12px; margin-bottom: 16px; }
+    .preview-meta span { font-size: 12px; color: var(--muted); }
+    .preview-meta strong { color: var(--fg); }
+    .success-icon { font-size: 48px; text-align: center; margin-bottom: 12px; }
+    .success-key { font-family: monospace; font-size: 16px; color: var(--primary); font-weight: 700; }
+    .timeout-msg { color: var(--warning); font-size: 12px; margin-top: 8px; }
+    .error-box { background: rgba(220,38,38,0.1); border: 1px solid #7f1d1d; border-radius: 6px; padding: 10px; color: #fca5a5; font-size: 12px; margin-top: 12px; }
   </style>
 </head>
 <body>
@@ -244,7 +274,10 @@
     <div class="section">
       <div class="header-row">
         <h2>Tickets</h2>
-        <button class="btn btn-primary" onclick="navigate('new-ticket')">+ New Ticket</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" onclick="openAITicketModal()" style="display:flex;align-items:center;gap:4px">&#9889; New AI Ticket</button>
+          <button class="btn btn-primary" onclick="navigate('new-ticket')">+ New Ticket</button>
+        </div>
       </div>
       <div id="ticket-list"></div>
     </div>
@@ -324,6 +357,12 @@
     <div class="section">
       <h2>Workflows</h2>
       <div id="ticket-workflows-list"></div>
+    </div>
+  </div>
+
+  <div id="ai-ticket-modal" class="modal-overlay hidden" onclick="handleModalOverlayClick(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div id="ai-modal-content"></div>
     </div>
   </div>
 
@@ -698,6 +737,7 @@ async function loadProject() {
             <div class="card-row">
               <div>
                 <span class="mono" style="color:var(--primary);font-size:12px;margin-right:8px">${t.jira_key}</span>
+                ${t.ai_generated ? '<span class="ai-badge" title="AI Generated">&#129302;</span>' : ''}
                 <span style="font-size:13px">${t.summary}</span>
               </div>
               <div class="card-left">
@@ -1020,6 +1060,314 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+let aiModalState = {
+  step: 1,
+  generatedData: null,
+  description: '',
+  timeoutId: null
+};
+
+function openAITicketModal() {
+  aiModalState = { step: 1, generatedData: null, description: '', timeoutId: null };
+  document.getElementById('ai-ticket-modal').classList.remove('hidden');
+  renderAIModal();
+}
+
+function closeAITicketModal() {
+  if (aiModalState.timeoutId) clearTimeout(aiModalState.timeoutId);
+  document.getElementById('ai-ticket-modal').classList.add('hidden');
+}
+
+function handleModalOverlayClick(e) {
+  if (e.target === document.getElementById('ai-ticket-modal')) {
+    closeAITicketModal();
+  }
+}
+
+function stepDots(current, total) {
+  return '<div class="modal-steps">' +
+    Array.from({length: total}, (_, i) => {
+      const cls = i + 1 < current ? 'done' : i + 1 === current ? 'active' : '';
+      return `<div class="modal-step-dot ${cls}"></div>`;
+    }).join('') +
+  '</div>';
+}
+
+function renderAIModal() {
+  const el = document.getElementById('ai-modal-content');
+  const s = aiModalState;
+
+  if (s.step === 1) {
+    el.innerHTML = `
+      <h3>&#9889; AI Ticket Creator</h3>
+      <p class="modal-subtitle">Describe what you want to implement and AI will generate a structured ticket.</p>
+      ${stepDots(1, 5)}
+      <div class="form-group">
+        <label>What do you want to implement? *</label>
+        <textarea id="ai-input-desc" rows="6" placeholder="Describe the feature, bug fix, or task in detail... (min 10 characters)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--fg);font-size:13px;outline:none;font-family:inherit;resize:vertical">${escapeHtml(s.description)}</textarea>
+        <div id="ai-input-error" class="error-text" style="margin-top:4px"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="startAIGeneration()">&#9889; Generate with AI</button>
+        <button class="btn btn-ghost" onclick="closeAITicketModal()">Cancel</button>
+      </div>`;
+  } else if (s.step === 2) {
+    el.innerHTML = `
+      <h3>&#9889; Generating Ticket...</h3>
+      <p class="modal-subtitle">AI is analyzing your description and generating a structured ticket.</p>
+      ${stepDots(2, 5)}
+      <ul class="processing-list">
+        <li id="proc-1" class="active"><div class="spinner"></div> Analyzing description...</li>
+        <li id="proc-2"><div style="width:14px;height:14px;flex-shrink:0"></div> Identifying components...</li>
+        <li id="proc-3"><div style="width:14px;height:14px;flex-shrink:0"></div> Generating ticket...</li>
+      </ul>
+      <div id="ai-gen-error"></div>`;
+    animateProcessingSteps();
+  } else if (s.step === 3) {
+    const d = s.generatedData;
+    const components = Array.isArray(d.affected_components) ? d.affected_components.join(', ') : '';
+    el.innerHTML = `
+      <h3>&#9889; Review Generated Ticket</h3>
+      <p class="modal-subtitle">Review and edit the generated content before saving.</p>
+      ${stepDots(3, 5)}
+      <div class="preview-meta">
+        <span>Priority: <strong>${escapeHtml(d.priority || 'Medium')}</strong></span>
+        <span>Complexity: <strong>${escapeHtml(d.complexity || 'moderate')}</strong></span>
+        ${components ? `<span>Components: <strong>${escapeHtml(components)}</strong></span>` : ''}
+      </div>
+      <div class="preview-section">
+        <label>Title</label>
+        <textarea id="ai-preview-title" rows="2">${escapeHtml(d.title || '')}</textarea>
+      </div>
+      <div class="preview-section">
+        <label>Business Description</label>
+        <textarea id="ai-preview-business" rows="4">${escapeHtml(d.business_description || '')}</textarea>
+      </div>
+      <div class="preview-section">
+        <label>Technical Description</label>
+        <textarea id="ai-preview-technical" rows="5">${escapeHtml(d.technical_description || '')}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="acceptPreview()">Looks Good &#10003;</button>
+        <button class="btn btn-ghost" onclick="goToRefinement()">Refine...</button>
+        <button class="btn btn-ghost" onclick="regenerateTicket()">&#8635; Regenerate</button>
+        <button class="btn btn-ghost" onclick="aiModalState.step=1;renderAIModal()">Back</button>
+      </div>`;
+  } else if (s.step === 4) {
+    const d = s.generatedData;
+    const currentDesc = `Title: ${d.title || ''}\n\nBusiness: ${d.business_description || ''}\n\nTechnical: ${d.technical_description || ''}`;
+    el.innerHTML = `
+      <h3>&#9889; Refine Ticket</h3>
+      <p class="modal-subtitle">Provide refinement notes and AI will update the ticket.</p>
+      ${stepDots(4, 5)}
+      <div class="preview-section">
+        <label>Current Description (readonly)</label>
+        <textarea rows="5" readonly style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--muted);font-size:12px;font-family:inherit;resize:vertical">${escapeHtml(currentDesc)}</textarea>
+      </div>
+      <div class="preview-section">
+        <label>Refinement Notes *</label>
+        <textarea id="ai-refine-notes" rows="4" placeholder="What should be changed or improved?"></textarea>
+      </div>
+      <div id="ai-refine-error" class="error-text" style="margin-top:4px"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="applyRefinement()">Apply Refinement</button>
+        <button class="btn btn-green" onclick="acceptPreview()">Done &#10003;</button>
+        <button class="btn btn-ghost" onclick="aiModalState.step=3;renderAIModal()">Back</button>
+      </div>`;
+  } else if (s.step === 5) {
+    const d = s.generatedData;
+    el.innerHTML = `
+      <div class="success-icon">&#10003;</div>
+      <h3 style="text-align:center;margin-bottom:8px">Ticket Created!</h3>
+      <p class="modal-subtitle" style="text-align:center">Your AI-generated ticket has been saved.</p>
+      ${stepDots(5, 5)}
+      <div style="text-align:center;margin:16px 0">
+        <div class="success-key" id="ai-success-key"></div>
+        <div style="margin-top:6px;font-size:13px" id="ai-success-title"></div>
+      </div>
+      <div class="modal-actions" style="justify-content:center">
+        <button class="btn btn-primary" onclick="goToCreatedTicket()">Go to Ticket</button>
+        <button class="btn btn-ghost" onclick="createAnotherTicket()">Create Another</button>
+        <button class="btn btn-ghost" onclick="closeAITicketModal();loadProject()">Close</button>
+      </div>`;
+    if (s.createdTicket) {
+      document.getElementById('ai-success-key').textContent = s.createdTicket.jira_key || '';
+      document.getElementById('ai-success-title').textContent = s.createdTicket.summary || '';
+    }
+  }
+}
+
+function animateProcessingSteps() {
+  setTimeout(() => {
+    const p1 = document.getElementById('proc-1');
+    const p2 = document.getElementById('proc-2');
+    if (p1) { p1.classList.remove('active'); p1.classList.add('done'); p1.innerHTML = '<span class="check">&#10003;</span> Analyzing description...'; }
+    if (p2) { p2.classList.add('active'); p2.innerHTML = '<div class="spinner"></div> Identifying components...'; }
+  }, 4000);
+  setTimeout(() => {
+    const p2 = document.getElementById('proc-2');
+    const p3 = document.getElementById('proc-3');
+    if (p2) { p2.classList.remove('active'); p2.classList.add('done'); p2.innerHTML = '<span class="check">&#10003;</span> Identifying components...'; }
+    if (p3) { p3.classList.add('active'); p3.innerHTML = '<div class="spinner"></div> Generating ticket...'; }
+  }, 10000);
+}
+
+async function startAIGeneration() {
+  const desc = document.getElementById('ai-input-desc').value.trim();
+  if (desc.length < 10) {
+    document.getElementById('ai-input-error').textContent = 'Description must be at least 10 characters.';
+    return;
+  }
+  if (desc.length > 2000) {
+    document.getElementById('ai-input-error').textContent = 'Description must not exceed 2000 characters.';
+    return;
+  }
+  aiModalState.description = desc;
+  aiModalState.step = 2;
+  renderAIModal();
+
+  const timeoutId = setTimeout(() => {
+    const errEl = document.getElementById('ai-gen-error');
+    if (errEl) errEl.innerHTML = '<div class="timeout-msg">&#9888; Taking longer than expected... please wait.</div>';
+  }, 25000);
+  aiModalState.timeoutId = timeoutId;
+
+  try {
+    const resp = await fetch('/api/tickets/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ description: desc, project_id: currentProjectId })
+    });
+    clearTimeout(timeoutId);
+    if (!resp.ok) {
+      const msg = await resp.text();
+      throw new Error(msg);
+    }
+    const data = await resp.json();
+    aiModalState.generatedData = data;
+    aiModalState.step = 3;
+    renderAIModal();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const errEl = document.getElementById('ai-gen-error');
+    if (errEl) errEl.innerHTML = `<div class="error-box">&#10007; ${escapeHtml(err.message)}<br><br><button class="btn btn-ghost" style="margin-top:8px" onclick="aiModalState.step=1;renderAIModal()">Try Again</button></div>`;
+  }
+}
+
+async function regenerateTicket() {
+  aiModalState.step = 2;
+  renderAIModal();
+  await startAIGenerationFromState();
+}
+
+async function startAIGenerationFromState() {
+  const desc = aiModalState.description;
+  const timeoutId = setTimeout(() => {
+    const errEl = document.getElementById('ai-gen-error');
+    if (errEl) errEl.innerHTML = '<div class="timeout-msg">&#9888; Taking longer than expected...</div>';
+  }, 25000);
+  aiModalState.timeoutId = timeoutId;
+
+  try {
+    const resp = await fetch('/api/tickets/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ description: desc, project_id: currentProjectId })
+    });
+    clearTimeout(timeoutId);
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    aiModalState.generatedData = data;
+    aiModalState.step = 3;
+    renderAIModal();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const errEl = document.getElementById('ai-gen-error');
+    if (errEl) errEl.innerHTML = `<div class="error-box">&#10007; ${escapeHtml(err.message)}<br><br><button class="btn btn-ghost" style="margin-top:8px" onclick="aiModalState.step=1;renderAIModal()">Go Back</button></div>`;
+  }
+}
+
+function syncPreviewToState() {
+  const titleEl = document.getElementById('ai-preview-title');
+  const bizEl = document.getElementById('ai-preview-business');
+  const techEl = document.getElementById('ai-preview-technical');
+  if (titleEl) aiModalState.generatedData.title = titleEl.value;
+  if (bizEl) aiModalState.generatedData.business_description = bizEl.value;
+  if (techEl) aiModalState.generatedData.technical_description = techEl.value;
+}
+
+async function acceptPreview() {
+  syncPreviewToState();
+  const d = aiModalState.generatedData;
+  const description = `Business Description:\n${d.business_description || ''}\n\nTechnical Description:\n${d.technical_description || ''}`;
+  try {
+    const ticket = await api('/projects/' + currentProjectId + '/tickets', {
+      method: 'POST',
+      body: JSON.stringify({
+        summary: d.title || 'AI Generated Ticket',
+        description,
+        priority: d.priority || 'Medium',
+        ai_generated: true,
+        ai_metadata: JSON.stringify(d),
+        refinement_count: aiModalState.refinementCount || 0
+      })
+    });
+    aiModalState.createdTicket = ticket;
+    aiModalState.step = 5;
+    renderAIModal();
+  } catch (err) {
+    alert('Failed to save ticket: ' + err.message);
+  }
+}
+
+function goToRefinement() {
+  syncPreviewToState();
+  aiModalState.step = 4;
+  renderAIModal();
+}
+
+async function applyRefinement() {
+  const notes = document.getElementById('ai-refine-notes').value.trim();
+  if (!notes) {
+    document.getElementById('ai-refine-error').textContent = 'Refinement notes are required.';
+    return;
+  }
+  const d = aiModalState.generatedData;
+  const currentDesc = `Title: ${d.title || ''}\n\nBusiness: ${d.business_description || ''}\n\nTechnical: ${d.technical_description || ''}`;
+
+  const btn = document.querySelector('#ai-modal-content .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Refining...'; }
+
+  try {
+    const resp = await fetch('/api/tickets/refine', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ current_description: currentDesc, refinement_notes: notes })
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    aiModalState.generatedData = data;
+    aiModalState.refinementCount = (aiModalState.refinementCount || 0) + 1;
+    aiModalState.step = 3;
+    renderAIModal();
+  } catch (err) {
+    document.getElementById('ai-refine-error').textContent = err.message;
+    if (btn) { btn.disabled = false; btn.textContent = 'Apply Refinement'; }
+  }
+}
+
+function goToCreatedTicket() {
+  if (aiModalState.createdTicket) {
+    closeAITicketModal();
+    navigate('ticket', aiModalState.createdTicket.id);
+  }
+}
+
+function createAnotherTicket() {
+  aiModalState = { step: 1, generatedData: null, description: '', timeoutId: null };
+  renderAIModal();
 }
 
 loadConfig().then(() => navigateFromPath(window.location.pathname, true));

@@ -905,3 +905,106 @@ func TestGetWorkflowWithoutTicketReturnsEmptyStrings(t *testing.T) {
 		t.Errorf("Expected empty TicketJiraKey, got %q", wf.TicketJiraKey)
 	}
 }
+
+func TestCreateTicketSavesAIGeneratedTrue(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := &models.Ticket{
+		ProjectID:   project.ID,
+		Summary:     "AI Ticket",
+		AIGenerated: true,
+		AIMetadata:  `{"title":"AI Ticket"}`,
+	}
+	if err := db.CreateTicket(ticket); err != nil {
+		t.Fatalf("CreateTicket failed: %v", err)
+	}
+
+	retrieved, err := db.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+	if !retrieved.AIGenerated {
+		t.Error("Expected AIGenerated=true, got false")
+	}
+}
+
+func TestCreateTicketSavesAIMetadataJSON(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	meta := `{"title":"Test","priority":"High"}`
+	ticket := &models.Ticket{
+		ProjectID:  project.ID,
+		Summary:    "AI Ticket with metadata",
+		AIMetadata: meta,
+	}
+	if err := db.CreateTicket(ticket); err != nil {
+		t.Fatalf("CreateTicket failed: %v", err)
+	}
+
+	retrieved, err := db.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+	if retrieved.AIMetadata != meta {
+		t.Errorf("Expected AIMetadata %q, got %q", meta, retrieved.AIMetadata)
+	}
+}
+
+func TestCreateTicketSavesRefinementCount(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := &models.Ticket{
+		ProjectID:       project.ID,
+		Summary:         "AI Ticket with refinement",
+		RefinementCount: 3,
+	}
+	if err := db.CreateTicket(ticket); err != nil {
+		t.Fatalf("CreateTicket failed: %v", err)
+	}
+
+	retrieved, err := db.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+	if retrieved.RefinementCount != 3 {
+		t.Errorf("Expected RefinementCount=3, got %d", retrieved.RefinementCount)
+	}
+}
+
+func TestGetTicketByIDReturnsAIFields(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	meta := `{"title":"X","complexity":"complex"}`
+	ticket := &models.Ticket{
+		ProjectID:       project.ID,
+		Summary:         "Full AI Ticket",
+		AIGenerated:     true,
+		AIMetadata:      meta,
+		RefinementCount: 2,
+	}
+	if err := db.CreateTicket(ticket); err != nil {
+		t.Fatalf("CreateTicket failed: %v", err)
+	}
+
+	retrieved, err := db.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+	if !retrieved.AIGenerated {
+		t.Error("Expected AIGenerated=true")
+	}
+	if retrieved.AIMetadata != meta {
+		t.Errorf("Expected AIMetadata %q, got %q", meta, retrieved.AIMetadata)
+	}
+	if retrieved.RefinementCount != 2 {
+		t.Errorf("Expected RefinementCount=2, got %d", retrieved.RefinementCount)
+	}
+}

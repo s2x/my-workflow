@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 
+	aiservice "github.com/piotr-halas/decodo-workflow/internal/ai"
 	"github.com/piotr-halas/decodo-workflow/internal/api/handlers"
 	"github.com/piotr-halas/decodo-workflow/internal/config"
 	"github.com/piotr-halas/decodo-workflow/internal/db"
@@ -20,6 +21,8 @@ func NewRouter(database *db.DB, engine *workflow.Engine, cfg *config.Config) htt
 	taskHandler := handlers.NewTaskHandler(database)
 	sseHandler := handlers.NewSSEHandler(database)
 	configHandler := handlers.NewConfigHandler(cfg)
+	aiSvc := aiservice.NewAITicketService(cfg.OpencodeBin, cfg.QwenBin)
+	aiTicketHandler := handlers.NewAITicketHandler(aiSvc)
 
 	mux.HandleFunc("GET /api/health", handlers.Health)
 	mux.HandleFunc("GET /api/config", configHandler.Get)
@@ -41,6 +44,8 @@ func NewRouter(database *db.DB, engine *workflow.Engine, cfg *config.Config) htt
 	mux.HandleFunc("PUT /api/tickets/{id}", ticketHandler.Update)
 	mux.HandleFunc("POST /api/tickets/{id}/done", ticketHandler.MarkDone)
 	mux.HandleFunc("GET /api/tickets/{id}/workflows", ticketHandler.GetWorkflows)
+	mux.HandleFunc("POST /api/tickets/generate", aiTicketHandler.HandleGenerateTicket)
+	mux.HandleFunc("POST /api/tickets/refine", aiTicketHandler.HandleRefineTicket)
 
 	mux.HandleFunc("GET /api/workflows", workflowHandler.List)
 	mux.HandleFunc("GET /api/workflows/{id}", workflowHandler.Get)
