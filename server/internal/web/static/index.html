@@ -393,11 +393,19 @@ let pollTimer = null;
 let logEventSource = null;
 let autoScroll = true;
 let currentLogTaskId = null;
+let jiraUrl = '';
 
 async function api(path, opts) {
   const r = await fetch('/api' + path, { headers: {'Content-Type':'application/json'}, ...opts });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+async function loadConfig() {
+  try {
+    const cfg = await api('/config');
+    jiraUrl = cfg.jira_url || '';
+  } catch {}
 }
 
 function updateBreadcrumb() {
@@ -668,7 +676,7 @@ async function loadProject() {
           <div class="card-row">
             <div class="card-left">
               <span class="badge ${STATUS_BADGE[wf.status]||'badge-zinc'}">${wf.status}</span>
-              ${wf.ticket_jira_key ? `<span class="mono" style="color:var(--primary);font-size:12px">${wf.ticket_jira_key}</span>` : ''}
+              ${wf.ticket_jira_key ? (jiraUrl ? `<a class="mono" style="color:var(--primary);font-size:12px" href="${jiraUrl}/browse/${wf.ticket_jira_key}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${wf.ticket_jira_key}</a>` : `<span class="mono" style="color:var(--primary);font-size:12px">${wf.ticket_jira_key}</span>`) : ''}
               <span style="font-size:13px">${wf.ticket_summary || '<span class="muted mono">' + wf.id.slice(0,8) + '</span>'}</span>
               ${wf.branch_name ? `<span class="muted mono" style="font-size:11px">${wf.branch_name}</span>` : ''}
             </div>
@@ -776,6 +784,8 @@ function renderTicketWorkflows(workflows) {
       <div class="card-row">
         <div class="card-left">
           <span class="badge ${STATUS_BADGE[wf.status]||'badge-zinc'}">${wf.status}</span>
+          ${wf.ticket_jira_key ? (jiraUrl ? `<a class="mono" style="color:var(--primary);font-size:12px" href="${jiraUrl}/browse/${wf.ticket_jira_key}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${wf.ticket_jira_key}</a>` : `<span class="mono" style="color:var(--primary);font-size:12px">${wf.ticket_jira_key}</span>`) : ''}
+          ${wf.ticket_summary ? `<span style="font-size:13px">${wf.ticket_summary}</span>` : ''}
           ${wf.branch_name ? `<span class="muted mono" style="font-size:11px">${wf.branch_name}</span>` : ''}
         </div>
         <span class="muted">${new Date(wf.created_at).toLocaleString()}</span>
@@ -842,7 +852,14 @@ async function loadWorkflow() {
 }
 
 function renderWorkflow(wf, tasks, msgs) {
-  document.getElementById('wf-title').textContent = wf.ticket_summary || ('Workflow ' + wf.id.slice(0,8));
+  const jiraKeyHtml = wf.ticket_jira_key
+    ? (jiraUrl
+        ? `<a class="mono" style="color:var(--primary);font-size:14px;margin-right:8px;text-decoration:none" href="${jiraUrl}/browse/${wf.ticket_jira_key}" target="_blank" rel="noopener">${wf.ticket_jira_key}</a>`
+        : `<span class="mono" style="color:var(--primary);font-size:14px;margin-right:8px">${wf.ticket_jira_key}</span>`)
+    : '';
+  const titleEl = document.getElementById('wf-title');
+  titleEl.textContent = '';
+  titleEl.innerHTML = jiraKeyHtml + (wf.ticket_summary || ('Workflow ' + wf.id.slice(0,8)));
   document.getElementById('wf-branch').textContent = wf.branch_name || '';
 
   const step = STATUS_STEP[wf.status] ?? 0;
@@ -1001,7 +1018,7 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-navigateFromPath(window.location.pathname, true);
+loadConfig().then(() => navigateFromPath(window.location.pathname, true));
 </script>
 </body>
 </html>

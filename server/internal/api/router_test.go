@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/piotr-halas/decodo-workflow/internal/config"
 	"github.com/piotr-halas/decodo-workflow/internal/db"
 )
 
@@ -16,7 +17,7 @@ func setupTestRouter(t *testing.T) http.Handler {
 		t.Fatalf("failed to create test database: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	return NewRouter(database, nil)
+	return NewRouter(database, nil, &config.Config{})
 }
 
 func TestRouterHealthEndpoint(t *testing.T) {

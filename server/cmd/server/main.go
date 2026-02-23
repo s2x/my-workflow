@@ -76,7 +76,7 @@ func main() {
 	stop := make(chan struct{})
 	go engine.RunLoop(stop)
 
-	router := api.NewRouter(database, engine)
+	router := api.NewRouter(database, engine, cfg)
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.ServerPort),
 		Handler: router,
