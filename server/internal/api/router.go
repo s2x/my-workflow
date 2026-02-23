@@ -25,6 +25,7 @@ func NewRouter(database *db.DB, engine *workflow.Engine) http.Handler {
 	mux.HandleFunc("POST /api/projects", projectHandler.Create)
 	mux.HandleFunc("GET /api/projects/{projectId}", projectHandler.Get)
 	mux.HandleFunc("PUT /api/projects/{projectId}", projectHandler.Update)
+	mux.HandleFunc("DELETE /api/projects/{projectId}", projectHandler.Delete)
 
 	mux.HandleFunc("GET /api/projects/{projectId}/tickets", ticketHandler.ListByProject)
 	mux.HandleFunc("POST /api/projects/{projectId}/tickets", ticketHandler.Create)

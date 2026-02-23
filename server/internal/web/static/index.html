@@ -227,6 +227,7 @@
       <div style="display:flex;gap:8px">
         <button type="submit" class="btn btn-primary" id="edit-project-submit-btn">Save Changes</button>
         <button type="button" class="btn btn-ghost" onclick="navigate('projects')">Cancel</button>
+        <button type="button" class="btn btn-red" onclick="deleteProject(currentProjectId)" style="margin-left:auto">Delete Project</button>
       </div>
     </form>
   </div>
@@ -515,6 +516,17 @@ async function submitProject(e) {
     document.getElementById('project-form-error').textContent = err.message;
   } finally {
     document.getElementById('project-submit-btn').disabled = false;
+  }
+}
+
+async function deleteProject(projectId) {
+  if (!confirm('Czy na pewno chcesz usunąć projekt wraz ze wszystkimi ticketami i workflow?')) return;
+  try {
+    const r = await fetch('/api/projects/' + projectId, { method: 'DELETE' });
+    if (!r.ok) throw new Error(await r.text());
+    navigate('projects');
+  } catch(err) {
+    document.getElementById('edit-project-form-error').textContent = err.message;
   }
 }
 

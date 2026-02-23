@@ -74,9 +74,37 @@ func (db *DB) UpdateProject(p *models.Project) error {
 	return err
 }
 
-func (db *DB) DeleteProject(id string) error {
-	_, err := db.conn.Exec(`DELETE FROM projects WHERE id = ?`, id)
-	return err
+func (db *DB) DeleteProject(id string) (bool, error) {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM projects WHERE id = ?`, id).Scan(&count); err != nil {
+		return false, err
+	}
+	if count == 0 {
+		return false, nil
+	}
+
+	statements := []string{
+		`DELETE FROM task_logs WHERE task_id IN (SELECT t.id FROM tasks t JOIN workflows w ON t.workflow_id = w.id WHERE w.project_id = ?)`,
+		`DELETE FROM chat_messages WHERE workflow_id IN (SELECT id FROM workflows WHERE project_id = ?)`,
+		`DELETE FROM tasks WHERE workflow_id IN (SELECT id FROM workflows WHERE project_id = ?)`,
+		`DELETE FROM workflows WHERE project_id = ?`,
+		`DELETE FROM tickets WHERE project_id = ?`,
+		`DELETE FROM projects WHERE id = ?`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt, id); err != nil {
+			return false, err
+		}
+	}
+
+	return true, tx.Commit()
 }
 
 func (db *DB) UpsertTicket(t *models.Ticket) error {

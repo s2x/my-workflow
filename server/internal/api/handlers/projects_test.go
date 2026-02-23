@@ -318,3 +318,137 @@ func TestGetProjectNotFound(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
 	}
 }
+
+func TestDeleteProjectReturns204(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	project := &models.Project{Name: "to-delete", RepoPath: "/tmp/del"}
+	database.CreateProject(project)
+
+	req := httptest.NewRequest(http.MethodDelete, "/projects/"+project.ID, nil)
+	req.SetPathValue("projectId", project.ID)
+	w := httptest.NewRecorder()
+
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status %d, got %d", http.StatusNoContent, w.Code)
+	}
+}
+
+func TestDeleteProjectNotFound(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	req := httptest.NewRequest(http.MethodDelete, "/projects/nonexistent", nil)
+	req.SetPathValue("projectId", "nonexistent")
+	w := httptest.NewRecorder()
+
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestDeleteProjectCascadesTickets(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	project := &models.Project{Name: "proj", RepoPath: "/tmp/p"}
+	database.CreateProject(project)
+
+	ticket := &models.Ticket{ProjectID: project.ID, Summary: "ticket-1"}
+	database.CreateTicket(ticket)
+
+	req := httptest.NewRequest(http.MethodDelete, "/projects/"+project.ID, nil)
+	req.SetPathValue("projectId", project.ID)
+	w := httptest.NewRecorder()
+
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("Expected 204, got %d", w.Code)
+	}
+
+	tickets, err := database.GetTicketsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetTicketsByProject error: %v", err)
+	}
+	if len(tickets) != 0 {
+		t.Errorf("Expected 0 tickets after delete, got %d", len(tickets))
+	}
+}
+
+func TestDeleteProjectCascadesWorkflows(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	project := &models.Project{Name: "proj", RepoPath: "/tmp/p"}
+	database.CreateProject(project)
+
+	workflow := &models.Workflow{ProjectID: project.ID, Status: models.WorkflowCreated}
+	database.CreateWorkflow(workflow)
+
+	req := httptest.NewRequest(http.MethodDelete, "/projects/"+project.ID, nil)
+	req.SetPathValue("projectId", project.ID)
+	w := httptest.NewRecorder()
+
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("Expected 204, got %d", w.Code)
+	}
+
+	workflows, err := database.GetWorkflowsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByProject error: %v", err)
+	}
+	if len(workflows) != 0 {
+		t.Errorf("Expected 0 workflows after delete, got %d", len(workflows))
+	}
+}
+
+func TestDeleteProjectCascadesTasksAndLogs(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	project := &models.Project{Name: "proj", RepoPath: "/tmp/p"}
+	database.CreateProject(project)
+
+	workflow := &models.Workflow{ProjectID: project.ID, Status: models.WorkflowCreated}
+	database.CreateWorkflow(workflow)
+
+	task := &models.Task{WorkflowID: workflow.ID, Type: "coder", Agent: "test"}
+	database.CreateTask(task)
+
+	taskLog := &models.TaskLog{TaskID: task.ID, Message: "log entry"}
+	database.CreateTaskLog(taskLog)
+
+	req := httptest.NewRequest(http.MethodDelete, "/projects/"+project.ID, nil)
+	req.SetPathValue("projectId", project.ID)
+	w := httptest.NewRecorder()
+
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("Expected 204, got %d", w.Code)
+	}
+
+	tasks, err := database.GetTasksByWorkflow(workflow.ID)
+	if err != nil {
+		t.Fatalf("GetTasksByWorkflow error: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("Expected 0 tasks after delete, got %d", len(tasks))
+	}
+
+	logs, err := database.GetTaskLogs(task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskLogs error: %v", err)
+	}
+	if len(logs) != 0 {
+		t.Errorf("Expected 0 task_logs after delete, got %d", len(logs))
+	}
+}

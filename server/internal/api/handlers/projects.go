@@ -87,6 +87,20 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(project)
 }
 
+func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("projectId")
+	found, err := h.db.DeleteProject(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !found {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("projectId")
 	existing, err := h.db.GetProject(id)
