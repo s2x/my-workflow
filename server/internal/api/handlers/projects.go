@@ -183,15 +183,22 @@ func (h *ProjectHandler) GetModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, bin, "--list-models")
-	stdout, err := cmd.Output()
-
 	type modelsResponse struct {
 		Models []string `json:"models"`
 	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	var cmd *exec.Cmd
+	if project.Runner == "opencode" {
+		cmd = exec.CommandContext(ctx, bin, "models")
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(modelsResponse{Models: []string{}})
+		return
+	}
+	stdout, err := cmd.Output()
 
 	if err != nil || len(strings.TrimSpace(string(stdout))) == 0 {
 		w.Header().Set("Content-Type", "application/json")
