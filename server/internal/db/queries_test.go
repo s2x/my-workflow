@@ -512,3 +512,75 @@ func TestGetProjectsReturnsAutoFlags(t *testing.T) {
 		t.Error("Not all projects found in GetProjects")
 	}
 }
+
+func TestGetWorkflowsByProjectReturnsTicketInfo(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		Summary:   "Fix login bug",
+		JiraKey:   "LOCAL-abc123",
+	}
+	if err := db.CreateTicket(ticket); err != nil {
+		t.Fatalf("Failed to create ticket: %v", err)
+	}
+
+	workflow := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  ticket.ID,
+	}
+	if err := db.CreateWorkflow(workflow); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+
+	workflows, err := db.GetWorkflowsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByProject failed: %v", err)
+	}
+
+	if len(workflows) != 1 {
+		t.Fatalf("Expected 1 workflow, got %d", len(workflows))
+	}
+
+	wf := workflows[0]
+	if wf.TicketSummary != "Fix login bug" {
+		t.Errorf("Expected TicketSummary %q, got %q", "Fix login bug", wf.TicketSummary)
+	}
+	if wf.TicketJiraKey != ticket.JiraKey {
+		t.Errorf("Expected TicketJiraKey %q, got %q", ticket.JiraKey, wf.TicketJiraKey)
+	}
+}
+
+func TestGetWorkflowsByProjectNoTicketReturnsEmptyStrings(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+
+	workflow := &models.Workflow{
+		ProjectID: project.ID,
+		TicketID:  "",
+	}
+	if err := db.CreateWorkflow(workflow); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+
+	workflows, err := db.GetWorkflowsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByProject failed: %v", err)
+	}
+
+	if len(workflows) != 1 {
+		t.Fatalf("Expected 1 workflow, got %d", len(workflows))
+	}
+
+	wf := workflows[0]
+	if wf.TicketSummary != "" {
+		t.Errorf("Expected empty TicketSummary, got %q", wf.TicketSummary)
+	}
+	if wf.TicketJiraKey != "" {
+		t.Errorf("Expected empty TicketJiraKey, got %q", wf.TicketJiraKey)
+	}
+}

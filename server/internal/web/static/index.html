@@ -580,7 +580,8 @@ async function loadProject() {
           <div class="card-row">
             <div class="card-left">
               <span class="badge ${STATUS_BADGE[wf.status]||'badge-zinc'}">${wf.status}</span>
-              <span class="muted mono">${wf.id.slice(0,8)}</span>
+              ${wf.ticket_jira_key ? `<span class="mono" style="color:var(--primary);font-size:12px">${wf.ticket_jira_key}</span>` : ''}
+              <span style="font-size:13px">${wf.ticket_summary || '<span class="muted mono">' + wf.id.slice(0,8) + '</span>'}</span>
               ${wf.branch_name ? `<span class="muted mono" style="font-size:11px">${wf.branch_name}</span>` : ''}
             </div>
             <span class="muted">${new Date(wf.created_at).toLocaleString()}</span>
@@ -655,7 +656,7 @@ async function loadWorkflow() {
 }
 
 function renderWorkflow(wf, tasks, msgs) {
-  document.getElementById('wf-title').textContent = 'Workflow ' + wf.id.slice(0,8);
+  document.getElementById('wf-title').textContent = wf.ticket_summary || ('Workflow ' + wf.id.slice(0,8));
   document.getElementById('wf-branch').textContent = wf.branch_name || '';
 
   const step = STATUS_STEP[wf.status] ?? 0;

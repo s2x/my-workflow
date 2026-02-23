@@ -296,8 +296,11 @@ func (db *DB) GetWorkflow(id string) (*models.Workflow, error) {
 
 func (db *DB) GetWorkflowsByProject(projectID string) ([]models.Workflow, error) {
 	rows, err := db.conn.Query(`
-		SELECT id, project_id, ticket_id, status, branch_name, spec, retry_count, error, created_at, updated_at
-		FROM workflows WHERE project_id = ? ORDER BY created_at DESC
+		SELECT w.id, w.project_id, w.ticket_id, w.status, w.branch_name, w.spec, w.retry_count, w.error, w.created_at, w.updated_at,
+		       COALESCE(t.summary, '') AS ticket_summary, COALESCE(t.jira_key, '') AS ticket_jira_key
+		FROM workflows w
+		LEFT JOIN tickets t ON w.ticket_id = t.id
+		WHERE w.project_id = ? ORDER BY w.created_at DESC
 	`, projectID)
 	if err != nil {
 		return nil, err
@@ -307,7 +310,7 @@ func (db *DB) GetWorkflowsByProject(projectID string) ([]models.Workflow, error)
 	var workflows []models.Workflow
 	for rows.Next() {
 		var w models.Workflow
-		if err := rows.Scan(&w.ID, &w.ProjectID, &w.TicketID, &w.Status, &w.BranchName, &w.Spec, &w.RetryCount, &w.Error, &w.CreatedAt, &w.UpdatedAt); err != nil {
+		if err := rows.Scan(&w.ID, &w.ProjectID, &w.TicketID, &w.Status, &w.BranchName, &w.Spec, &w.RetryCount, &w.Error, &w.CreatedAt, &w.UpdatedAt, &w.TicketSummary, &w.TicketJiraKey); err != nil {
 			return nil, err
 		}
 		workflows = append(workflows, w)

@@ -17,16 +17,18 @@ const (
 )
 
 type Workflow struct {
-	ID         string         `json:"id"`
-	ProjectID  string         `json:"project_id"`
-	TicketID   string         `json:"ticket_id"`
-	Status     WorkflowStatus `json:"status"`
-	BranchName string         `json:"branch_name"`
-	Spec       string         `json:"spec"`
-	RetryCount int            `json:"retry_count"`
-	Error      string         `json:"error"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
+	ID            string         `json:"id"`
+	ProjectID     string         `json:"project_id"`
+	TicketID      string         `json:"ticket_id"`
+	Status        WorkflowStatus `json:"status"`
+	BranchName    string         `json:"branch_name"`
+	Spec          string         `json:"spec"`
+	RetryCount    int            `json:"retry_count"`
+	Error         string         `json:"error"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	TicketSummary string         `json:"ticket_summary"`
+	TicketJiraKey string         `json:"ticket_jira_key"`
 }
 
 type TaskType string
