@@ -15,7 +15,7 @@ import (
 func NewRouter(database *db.DB, engine *workflow.Engine, cfg *config.Config) http.Handler {
 	mux := http.NewServeMux()
 
-	projectHandler := handlers.NewProjectHandler(database)
+	projectHandler := handlers.NewProjectHandlerWithBins(database, cfg.OpencodeBin, cfg.QwenBin)
 	ticketHandler := handlers.NewTicketHandler(database)
 	workflowHandler := handlers.NewWorkflowHandler(database, engine)
 	taskHandler := handlers.NewTaskHandler(database)
@@ -32,6 +32,7 @@ func NewRouter(database *db.DB, engine *workflow.Engine, cfg *config.Config) htt
 	mux.HandleFunc("GET /api/projects/{projectId}", projectHandler.Get)
 	mux.HandleFunc("PUT /api/projects/{projectId}", projectHandler.Update)
 	mux.HandleFunc("DELETE /api/projects/{projectId}", projectHandler.Delete)
+	mux.HandleFunc("GET /api/projects/{projectId}/models", projectHandler.GetModels)
 
 	mux.HandleFunc("GET /api/projects/{projectId}/tickets", ticketHandler.ListByProject)
 	mux.HandleFunc("POST /api/projects/{projectId}/tickets", ticketHandler.Create)

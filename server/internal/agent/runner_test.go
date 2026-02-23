@@ -454,6 +454,60 @@ func TestDeleteBranchDoesNotCreateNewBranch(t *testing.T) {
 	}
 }
 
+func TestRunWithTaskIDAndRunnerPassesModelFlagForOpencode(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("echo", "echo", logger)
+	mockWriter := &mockLogWriter{}
+	runner.SetLogWriter(mockWriter)
+
+	result := runner.RunWithTaskIDAndRunner("test-agent", "hello", ".", "task-model-1", "opencode", "", "claude-3-5-sonnet")
+
+	if result.Error != nil {
+		t.Fatalf("Runner failed: %v", result.Error)
+	}
+
+	if !strings.Contains(result.Output, "--model") {
+		t.Errorf("Expected output to contain '--model', got: %q", result.Output)
+	}
+	if !strings.Contains(result.Output, "claude-3-5-sonnet") {
+		t.Errorf("Expected output to contain 'claude-3-5-sonnet', got: %q", result.Output)
+	}
+}
+
+func TestRunWithTaskIDAndRunnerNoModelFlagWhenModelEmpty(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("echo", "echo", logger)
+	mockWriter := &mockLogWriter{}
+	runner.SetLogWriter(mockWriter)
+
+	result := runner.RunWithTaskIDAndRunner("test-agent", "hello", ".", "task-model-2", "opencode", "", "")
+
+	if result.Error != nil {
+		t.Fatalf("Runner failed: %v", result.Error)
+	}
+
+	if strings.Contains(result.Output, "--model") {
+		t.Errorf("Expected output NOT to contain '--model', got: %q", result.Output)
+	}
+}
+
+func TestRunWithTaskIDAndRunnerNoModelFlagForQwen(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	runner := NewRunner("echo", "echo", logger)
+	mockWriter := &mockLogWriter{}
+	runner.SetLogWriter(mockWriter)
+
+	result := runner.RunWithTaskIDAndRunner("test-agent", "hello", ".", "task-model-3", "qwen", "", "some-model")
+
+	if result.Error != nil {
+		t.Fatalf("Runner failed: %v", result.Error)
+	}
+
+	if strings.Contains(result.Output, "--model") {
+		t.Errorf("Expected output NOT to contain '--model' for qwen runner, got: %q", result.Output)
+	}
+}
+
 func TestPrepareBranchFailsWhenFetchFails(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)

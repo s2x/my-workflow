@@ -10,6 +10,7 @@ type Project struct {
 	AutoTest   bool      `json:"auto_test"`
 	AutoReview bool      `json:"auto_review"`
 	Runner     string    `json:"runner"`
+	Model      string    `json:"model"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }

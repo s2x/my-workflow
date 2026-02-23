@@ -670,6 +670,103 @@ func TestUpdateTicketStatus(t *testing.T) {
 	}
 }
 
+func TestCreateProjectSavesModel(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "model-project",
+		RepoPath: "/tmp/test",
+		Runner:   "opencode",
+		Model:    "claude-3-5-sonnet",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.Model != "claude-3-5-sonnet" {
+		t.Errorf("Expected Model='claude-3-5-sonnet', got %q", retrieved.Model)
+	}
+}
+
+func TestGetProjectReadsModel(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "get-model-project",
+		RepoPath: "/tmp/test",
+		Model:    "gpt-4o",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.Model != "gpt-4o" {
+		t.Errorf("Expected Model='gpt-4o', got %q", retrieved.Model)
+	}
+}
+
+func TestUpdateProjectModel(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "update-model-project",
+		RepoPath: "/tmp/test",
+		Model:    "old-model",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	project.Model = "new-model"
+	if err := db.UpdateProject(project); err != nil {
+		t.Fatalf("UpdateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.Model != "new-model" {
+		t.Errorf("Expected Model='new-model' after update, got %q", retrieved.Model)
+	}
+}
+
+func TestCreateProjectDefaultModel(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := &models.Project{
+		Name:     "default-model-project",
+		RepoPath: "/tmp/test",
+	}
+	if err := db.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject failed: %v", err)
+	}
+
+	retrieved, err := db.GetProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetProject failed: %v", err)
+	}
+
+	if retrieved.Model != "" {
+		t.Errorf("Expected Model default='', got %q", retrieved.Model)
+	}
+}
+
 func TestGetTicketsByProjectExcludesDone(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

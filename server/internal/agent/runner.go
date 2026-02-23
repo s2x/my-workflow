@@ -388,14 +388,14 @@ func (r *Runner) Deploy(repoPath, featureBranch, baseBranch, taskID string) RunR
 }
 
 func (r *Runner) Run(agentName string, prompt string, repoPath string, baseBranch string) RunResult {
-	return r.RunWithTaskIDAndRunner(agentName, prompt, repoPath, "", "", baseBranch)
+	return r.RunWithTaskIDAndRunner(agentName, prompt, repoPath, "", "", baseBranch, "")
 }
 
 func (r *Runner) RunWithTaskID(agentName string, prompt string, repoPath string, taskID string) RunResult {
-	return r.RunWithTaskIDAndRunner(agentName, prompt, repoPath, taskID, "", "")
+	return r.RunWithTaskIDAndRunner(agentName, prompt, repoPath, taskID, "", "", "")
 }
 
-func (r *Runner) RunWithTaskIDAndRunner(agentName string, prompt string, repoPath string, taskID string, runnerType string, baseBranch string) RunResult {
+func (r *Runner) RunWithTaskIDAndRunner(agentName string, prompt string, repoPath string, taskID string, runnerType string, baseBranch string, model string) RunResult {
 	start := time.Now()
 
 	bin := r.qwenBin
@@ -403,7 +403,7 @@ func (r *Runner) RunWithTaskIDAndRunner(agentName string, prompt string, repoPat
 		bin = r.opencodeBin
 	}
 
-	r.logger.Info("running agent", "agent", agentName, "prompt_len", len(prompt), "repo", repoPath, "task_id", taskID, "runner", runnerType, "base_branch", baseBranch)
+	r.logger.Info("running agent", "agent", agentName, "prompt_len", len(prompt), "repo", repoPath, "task_id", taskID, "runner", runnerType, "base_branch", baseBranch, "model", model)
 
 	// Ensure we're on the correct base branch before running the agent
 	if baseBranch != "" {
@@ -416,10 +416,13 @@ func (r *Runner) RunWithTaskIDAndRunner(agentName string, prompt string, repoPat
 		r.logger.Info("ready to run agent", "base_branch", baseBranch)
 	}
 
-	cmd := exec.Command(bin, "run",
-		"--agent", agentName,
-		prompt,
-	)
+	args := []string{"run", "--agent", agentName}
+	if model != "" && runnerType == "opencode" {
+		args = append(args, "--model", model)
+	}
+	args = append(args, prompt)
+
+	cmd := exec.Command(bin, args...)
 	cmd.Dir = repoPath
 
 	var outputBuffer bytes.Buffer

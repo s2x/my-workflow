@@ -410,6 +410,146 @@ func TestDeleteProjectCascadesWorkflows(t *testing.T) {
 	}
 }
 
+func TestCreateProjectWithModel(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	payload := CreateProjectRequest{
+		Name:     "model-project",
+		RepoPath: "/tmp/test",
+		Runner:   "opencode",
+		Model:    "claude-3-5-sonnet",
+	}
+
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/projects", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	handler.Create(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, w.Code)
+	}
+
+	var project models.Project
+	json.NewDecoder(w.Body).Decode(&project)
+
+	if project.Model != "claude-3-5-sonnet" {
+		t.Errorf("Expected Model='claude-3-5-sonnet', got %q", project.Model)
+	}
+}
+
+func TestCreateProjectDefaultModel(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	payload := CreateProjectRequest{
+		Name:     "no-model-project",
+		RepoPath: "/tmp/test",
+	}
+
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/projects", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	handler.Create(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, w.Code)
+	}
+
+	var project models.Project
+	json.NewDecoder(w.Body).Decode(&project)
+
+	if project.Model != "" {
+		t.Errorf("Expected Model default='', got %q", project.Model)
+	}
+}
+
+func TestUpdateProjectModel(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	project := &models.Project{
+		Name:     "update-model-project",
+		RepoPath: "/tmp/test",
+		Runner:   "opencode",
+		Model:    "old-model",
+	}
+	database.CreateProject(project)
+
+	payload := CreateProjectRequest{
+		Name:     "update-model-project",
+		RepoPath: "/tmp/test",
+		Runner:   "opencode",
+		Model:    "new-model",
+	}
+
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPut, "/projects/"+project.ID, bytes.NewReader(body))
+	req.SetPathValue("projectId", project.ID)
+	w := httptest.NewRecorder()
+
+	handler.Update(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var updated models.Project
+	json.NewDecoder(w.Body).Decode(&updated)
+
+	if updated.Model != "new-model" {
+		t.Errorf("Expected Model='new-model' after update, got %q", updated.Model)
+	}
+}
+
+func TestGetModelsReturnsNotFoundForMissingProject(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/projects/nonexistent/models", nil)
+	req.SetPathValue("projectId", "nonexistent")
+	w := httptest.NewRecorder()
+
+	handler.GetModels(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestGetModelsReturnsFallbackWhenBinaryFails(t *testing.T) {
+	handler, database := setupTestHandler(t)
+	defer database.Close()
+
+	project := &models.Project{
+		Name:     "test-models-project",
+		RepoPath: "/tmp/test",
+		Runner:   "opencode",
+	}
+	database.CreateProject(project)
+
+	req := httptest.NewRequest(http.MethodGet, "/projects/"+project.ID+"/models", nil)
+	req.SetPathValue("projectId", project.ID)
+	w := httptest.NewRecorder()
+
+	handler.GetModels(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var resp struct {
+		Models []string `json:"models"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.Models == nil {
+		t.Error("Expected models to be a non-nil slice")
+	}
+}
+
 func TestDeleteProjectCascadesTasksAndLogs(t *testing.T) {
 	handler, database := setupTestHandler(t)
 	defer database.Close()

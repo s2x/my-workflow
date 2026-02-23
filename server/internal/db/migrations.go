@@ -108,6 +108,9 @@ func (db *DB) migrate() error {
 	if err := addColumnIfNotExists("projects", "runner", "TEXT NOT NULL DEFAULT 'qwen'"); err != nil {
 		return fmt.Errorf("adding runner column: %w", err)
 	}
+	if err := addColumnIfNotExists("projects", "model", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("adding model column: %w", err)
+	}
 
 	if err := addColumnIfNotExists("tickets", "ai_generated", "BOOLEAN NOT NULL DEFAULT FALSE"); err != nil {
 		return fmt.Errorf("adding ai_generated column: %w", err)
