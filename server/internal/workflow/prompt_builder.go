@@ -71,22 +71,25 @@ Odpowiedz WYŁĄCZNIE w formacie JSON:
 }
 
 func (pb *PromptBuilder) BuildCodePrompt(ticket *models.Ticket, spec string, subtaskDesc string) string {
+	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
 	var b strings.Builder
 	b.WriteString("Zaimplementuj poniższe zmiany w kodzie.\n\n")
 	b.WriteString(fmt.Sprintf("## Ticket: %s - %s\n\n", ticket.JiraKey, ticket.Summary))
+	b.WriteString(fmt.Sprintf("## Branch: %s\n\n", branchName))
 
 	if subtaskDesc != "" {
 		b.WriteString(fmt.Sprintf("## Podzadanie\n%s\n\n", subtaskDesc))
 	}
 
 	b.WriteString(fmt.Sprintf("## Specyfikacja techniczna\n%s\n\n", spec))
-	b.WriteString(fmt.Sprintf("## Wytyczne\n"))
-	b.WriteString(fmt.Sprintf("- Branch bazowy: %s\n", pb.baseBranch))
-	b.WriteString(fmt.Sprintf("- Utwórz branch: feature/%s z brancha %s\n", strings.ToLower(ticket.JiraKey), pb.baseBranch))
-	b.WriteString("- Commituj zmiany z opisowym komunikatem\n")
-	b.WriteString("- Napisz unit testy dla swoich zmian\n")
-	b.WriteString("- Uruchom testy przed zakończeniem\n")
-	b.WriteString("- Pushuj branch na remote\n")
+	b.WriteString("## Instrukcje\n")
+	b.WriteString(fmt.Sprintf("1. Sprawdź na jakim branchu jesteś: `git branch --show-current`\n"))
+	b.WriteString(fmt.Sprintf("2. Jeżeli nie jesteś na branchu `%s`, przełącz się: `git checkout %s`\n", branchName, branchName))
+	b.WriteString("3. Zaimplementuj wymagane zmiany\n")
+	b.WriteString("4. Napisz unit testy dla swoich zmian\n")
+	b.WriteString("5. Uruchom testy przed zakończeniem\n")
+	b.WriteString("6. Commituj zmiany: `git add . && git commit -m \"<type>(<scope>): <description>\"`\n")
+	b.WriteString("\nNIE twórz nowego brancha ani nie pushuj - branch jest zarządzany przez system.\n")
 	return b.String()
 }
 
@@ -97,11 +100,12 @@ func (pb *PromptBuilder) BuildTestPrompt(ticket *models.Ticket, spec string, bra
 	b.WriteString(fmt.Sprintf("## Branch: %s\n\n", branchName))
 	b.WriteString(fmt.Sprintf("## Specyfikacja testów\n%s\n\n", spec))
 	b.WriteString("## Instrukcje\n")
-	b.WriteString(fmt.Sprintf("1. Checkout branch: %s\n", branchName))
-	b.WriteString("2. Uruchom istniejące testy\n")
-	b.WriteString("3. Sprawdź pokrycie kodu testami\n")
-	b.WriteString("4. Napisz brakujące testy (edge cases, error handling)\n")
-	b.WriteString("5. Commituj i pushuj nowe testy\n\n")
+	b.WriteString(fmt.Sprintf("1. Sprawdź na jakim branchu jesteś: `git branch --show-current`\n"))
+	b.WriteString(fmt.Sprintf("2. Jeżeli nie jesteś na branchu `%s`, przełącz się: `git checkout %s`\n", branchName, branchName))
+	b.WriteString("3. Uruchom istniejące testy\n")
+	b.WriteString("4. Sprawdź pokrycie kodu testami\n")
+	b.WriteString("5. Napisz brakujące testy (edge cases, error handling)\n")
+	b.WriteString("6. Commituj nowe testy: `git add . && git commit -m \"test: <description>\"`\n\n")
 	b.WriteString("Odpowiedz w JSON:\n")
 	b.WriteString(`{
   "result": "PASS|FAIL",
@@ -122,11 +126,13 @@ func (pb *PromptBuilder) BuildReviewPrompt(ticket *models.Ticket, branchName str
 	b.WriteString(fmt.Sprintf("## Ticket: %s - %s\n", ticket.JiraKey, ticket.Summary))
 	b.WriteString(fmt.Sprintf("## Branch: %s\n\n", branchName))
 	b.WriteString(fmt.Sprintf("## Instrukcje\n"))
-	b.WriteString(fmt.Sprintf("1. Sprawdź diff: git diff %s...%s\n", pb.baseBranch, branchName))
-	b.WriteString("2. Oceń jakość kodu, czytelność, konwencje\n")
-	b.WriteString("3. Sprawdź bezpieczeństwo (brak wycieków danych, SQL injection, etc.)\n")
-	b.WriteString("4. Sprawdź performance (n+1 queries, memory leaks, etc.)\n")
-	b.WriteString("5. Sprawdź testy (pokrycie, sensowność)\n\n")
+	b.WriteString(fmt.Sprintf("1. Sprawdź na jakim branchu jesteś: `git branch --show-current`\n"))
+	b.WriteString(fmt.Sprintf("2. Jeżeli nie jesteś na branchu `%s`, przełącz się: `git checkout %s`\n", branchName, branchName))
+	b.WriteString(fmt.Sprintf("3. Sprawdź diff: git diff %s...%s\n", pb.baseBranch, branchName))
+	b.WriteString("4. Oceń jakość kodu, czytelność, konwencje\n")
+	b.WriteString("5. Sprawdź bezpieczeństwo (brak wycieków danych, SQL injection, etc.)\n")
+	b.WriteString("6. Sprawdź performance (n+1 queries, memory leaks, etc.)\n")
+	b.WriteString("7. Sprawdź testy (pokrycie, sensowność)\n\n")
 	b.WriteString("Odpowiedz w JSON:\n")
 	b.WriteString(`{
   "result": "APPROVED|CHANGES_REQUESTED",
@@ -153,10 +159,11 @@ func (pb *PromptBuilder) BuildRejectFixPrompt(ticket *models.Ticket, spec string
 	b.WriteString(fmt.Sprintf("## Powód odrzucenia przez użytkownika\n%s\n\n", rejectComment))
 	b.WriteString(fmt.Sprintf("## Oryginalna specyfikacja\n%s\n\n", spec))
 	b.WriteString("## Instrukcje\n")
-	b.WriteString(fmt.Sprintf("1. Checkout branch: %s\n", branchName))
-	b.WriteString("2. Napraw problemy opisane przez użytkownika w powodzie odrzucenia\n")
-	b.WriteString("3. Uruchom testy\n")
-	b.WriteString("4. Commituj i pushuj poprawki\n")
+	b.WriteString(fmt.Sprintf("1. Sprawdź na jakim branchu jesteś: `git branch --show-current`\n"))
+	b.WriteString(fmt.Sprintf("2. Jeżeli nie jesteś na branchu `%s`, przełącz się: `git checkout %s`\n", branchName, branchName))
+	b.WriteString("3. Napraw problemy opisane przez użytkownika w powodzie odrzucenia\n")
+	b.WriteString("4. Uruchom testy\n")
+	b.WriteString("5. Commituj poprawki: `git add . && git commit -m \"fix: <description>\"`\n")
 	return b.String()
 }
 
@@ -168,9 +175,10 @@ func (pb *PromptBuilder) BuildFixPrompt(ticket *models.Ticket, spec string, bran
 	b.WriteString(fmt.Sprintf("## Problemy do naprawienia\n%s\n\n", issues))
 	b.WriteString(fmt.Sprintf("## Oryginalna specyfikacja\n%s\n\n", spec))
 	b.WriteString("## Instrukcje\n")
-	b.WriteString(fmt.Sprintf("1. Checkout branch: %s\n", branchName))
-	b.WriteString("2. Napraw wymienione problemy\n")
-	b.WriteString("3. Uruchom testy\n")
-	b.WriteString("4. Commituj i pushuj poprawki\n")
+	b.WriteString(fmt.Sprintf("1. Sprawdź na jakim branchu jesteś: `git branch --show-current`\n"))
+	b.WriteString(fmt.Sprintf("2. Jeżeli nie jesteś na branchu `%s`, przełącz się: `git checkout %s`\n", branchName, branchName))
+	b.WriteString("3. Napraw wymienione problemy\n")
+	b.WriteString("4. Uruchom testy\n")
+	b.WriteString("5. Commituj poprawki: `git add . && git commit -m \"fix: <description>\"`\n")
 	return b.String()
 }
