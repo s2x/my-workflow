@@ -39,6 +39,8 @@ func (e *Engine) WriteLog(taskID string, level models.LogLevel, message string) 
 }
 
 func (e *Engine) StartWorkflow(project *models.Project, ticket *models.Ticket) (*models.Workflow, error) {
+	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
+
 	wf := &models.Workflow{
 		ProjectID: project.ID,
 		TicketID:  ticket.ID,
@@ -49,6 +51,16 @@ func (e *Engine) StartWorkflow(project *models.Project, ticket *models.Ticket) (
 	}
 
 	e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Workflow started for ticket %s: %s", ticket.JiraKey, ticket.Summary))
+
+	if err := e.runner.PrepareBranch(project.RepoPath, branchName, ""); err != nil {
+		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, fmt.Sprintf("failed to prepare branch: %v", err))
+		return nil, fmt.Errorf("preparing branch %s: %w", branchName, err)
+	}
+
+	if err := e.db.UpdateWorkflowBranch(wf.ID, branchName); err != nil {
+		return nil, fmt.Errorf("updating workflow branch: %w", err)
+	}
+	wf.BranchName = branchName
 
 	pb := NewPromptBuilder(project.BaseBranch)
 	prompt := pb.BuildDescribePrompt(ticket)
@@ -111,6 +123,23 @@ func (e *Engine) processTask(task models.Task) {
 		e.db.UpdateTaskError(task.ID, err.Error())
 		e.handleTaskFailure(task)
 		return
+	}
+
+	// Ensure we're on the correct branch before running the agent
+	wf, err := e.db.GetWorkflow(task.WorkflowID)
+	if err != nil || wf == nil {
+		e.logger.Error("failed to get workflow for task", "error", err)
+		e.db.UpdateTaskError(task.ID, "workflow not found")
+		e.handleTaskFailure(task)
+		return
+	}
+	if wf.BranchName != "" {
+		if err := e.runner.EnsureBranch(project.RepoPath, wf.BranchName, task.ID); err != nil {
+			e.logger.Error("failed to ensure correct branch", "error", err, "branch", wf.BranchName)
+			e.db.UpdateTaskError(task.ID, fmt.Sprintf("branch check failed: %v", err))
+			e.handleTaskFailure(task)
+			return
+		}
 	}
 
 	result := e.runner.RunWithTaskIDAndRunner(task.Agent, task.Prompt, project.RepoPath, task.ID, project.Runner, project.BaseBranch)
@@ -551,6 +580,16 @@ func (e *Engine) RestartWorkflow(workflowID string) error {
 	ticket, err := e.db.GetTicketByID(wf.TicketID)
 	if err != nil || ticket == nil {
 		return fmt.Errorf("ticket not found for workflow")
+	}
+
+	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
+	if err := e.runner.PrepareBranch(project.RepoPath, branchName, ""); err != nil {
+		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, fmt.Sprintf("failed to prepare branch: %v", err))
+		return fmt.Errorf("preparing branch %s: %w", branchName, err)
+	}
+
+	if err := e.db.UpdateWorkflowBranch(wf.ID, branchName); err != nil {
+		return fmt.Errorf("updating workflow branch: %w", err)
 	}
 
 	pb := NewPromptBuilder(project.BaseBranch)

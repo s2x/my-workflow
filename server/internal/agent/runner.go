@@ -43,6 +43,29 @@ type RunResult struct {
 	Error    error
 }
 
+// EnsureBranch checks if we're on the correct branch and switches if needed
+func (r *Runner) EnsureBranch(repoPath string, expectedBranch string, taskID string) error {
+	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = repoPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+	currentBranch := strings.TrimSpace(string(output))
+
+	if currentBranch == expectedBranch {
+		r.logger.Info("already on correct branch", "branch", expectedBranch)
+		return nil
+	}
+
+	r.logger.Info("branch mismatch, switching", "current", currentBranch, "expected", expectedBranch)
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("Switching from branch %s to %s", currentBranch, expectedBranch))
+	}
+
+	return r.gitCheckoutBranch(repoPath, expectedBranch, taskID)
+}
+
 // gitCheckoutBranch switches to the specified branch
 func (r *Runner) gitCheckoutBranch(repoPath string, branch string, taskID string) error {
 	r.logger.Info("checking out git branch", "branch", branch, "repo", repoPath)
@@ -130,6 +153,81 @@ func (r *Runner) gitEnsureBranch(repoPath string, branch string, taskID string) 
 	}
 	r.logger.Info("git branch created successfully", "branch", branch)
 
+	return nil
+}
+
+func (r *Runner) PrepareBranch(repoPath, branchName, taskID string) error {
+	r.logger.Info("preparing branch", "branch", branchName, "repo", repoPath)
+
+	stashCmd := exec.Command("git", "stash")
+	stashCmd.Dir = repoPath
+	stashOutput, err := stashCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git stash failed: %v\nOutput: %s", err, string(stashOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, logMsg)
+		}
+		r.logger.Warn("git stash failed (continuing)", "error", err, "output", string(stashOutput))
+	} else if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git stash succeeded\nOutput: %s", string(stashOutput)))
+	}
+
+	fetchCmd := exec.Command("git", "fetch", "origin")
+	fetchCmd.Dir = repoPath
+	fetchOutput, fetchErr := fetchCmd.CombinedOutput()
+	if fetchErr != nil {
+		logMsg := fmt.Sprintf("git fetch origin failed: %v\nOutput: %s", fetchErr, string(fetchOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git fetch origin failed", "error", fetchErr, "output", string(fetchOutput))
+		return fmt.Errorf("git fetch origin failed: %w", fetchErr)
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git fetch origin succeeded\nOutput: %s", string(fetchOutput)))
+	}
+
+	checkoutCmd := exec.Command("git", "checkout", "-B", branchName, "origin/master")
+	checkoutCmd.Dir = repoPath
+	checkoutOutput, err := checkoutCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git checkout -B %s origin/master failed: %v\nOutput: %s", branchName, err, string(checkoutOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git checkout -B failed", "branch", branchName, "error", err, "output", string(checkoutOutput))
+		return fmt.Errorf("git checkout -B %s origin/master failed: %w", branchName, err)
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git checkout -B %s origin/master succeeded\nOutput: %s", branchName, string(checkoutOutput)))
+	}
+
+	// Delete remote branch if exists (to avoid non-fast-forward errors on restart)
+	deleteRemoteCmd := exec.Command("git", "push", "origin", "--delete", branchName)
+	deleteRemoteCmd.Dir = repoPath
+	deleteRemoteOutput, _ := deleteRemoteCmd.CombinedOutput()
+	if strings.Contains(string(deleteRemoteOutput), "remote ref does not exist") {
+		r.logger.Info("remote branch does not exist, will create new", "branch", branchName)
+	} else if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("Deleted remote branch %s if existed", branchName))
+	}
+
+	pushCmd := exec.Command("git", "push", "-u", "origin", branchName)
+	pushCmd.Dir = repoPath
+	pushOutput, err := pushCmd.CombinedOutput()
+	if err != nil {
+		logMsg := fmt.Sprintf("git push -u origin %s failed: %v\nOutput: %s", branchName, err, string(pushOutput))
+		if taskID != "" && r.logWriter != nil {
+			_ = r.logWriter.WriteLog(taskID, models.LogLevelError, logMsg)
+		}
+		r.logger.Error("git push -u origin failed", "branch", branchName, "error", err, "output", string(pushOutput))
+		return fmt.Errorf("git push -u origin %s failed: %w", branchName, err)
+	}
+	if taskID != "" && r.logWriter != nil {
+		_ = r.logWriter.WriteLog(taskID, models.LogLevelInfo, fmt.Sprintf("git push -u origin %s succeeded\nOutput: %s", branchName, string(pushOutput)))
+	}
+
+	r.logger.Info("branch prepared successfully", "branch", branchName)
 	return nil
 }
 
