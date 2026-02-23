@@ -1066,17 +1066,17 @@ let aiModalState = {
   step: 1,
   generatedData: null,
   description: '',
-  timeoutId: null
+  abortController: null
 };
 
 function openAITicketModal() {
-  aiModalState = { step: 1, generatedData: null, description: '', timeoutId: null };
+  aiModalState = { step: 1, generatedData: null, description: '', abortController: null };
   document.getElementById('ai-ticket-modal').classList.remove('hidden');
   renderAIModal();
 }
 
 function closeAITicketModal() {
-  if (aiModalState.timeoutId) clearTimeout(aiModalState.timeoutId);
+  if (aiModalState.abortController) aiModalState.abortController.abort();
   document.getElementById('ai-ticket-modal').classList.add('hidden');
 }
 
@@ -1228,19 +1228,27 @@ async function startAIGeneration() {
   aiModalState.step = 2;
   renderAIModal();
 
-  const timeoutId = setTimeout(() => {
+  const abortController = new AbortController();
+  aiModalState.abortController = abortController;
+
+  const warningId = setTimeout(() => {
     const errEl = document.getElementById('ai-gen-error');
-    if (errEl) errEl.innerHTML = '<div class="timeout-msg">&#9888; Taking longer than expected... please wait.</div>';
-  }, 25000);
-  aiModalState.timeoutId = timeoutId;
+    if (errEl) errEl.innerHTML = '<div class="timeout-msg">&#9888; AI is thinking... this can take up to 2 minutes, please wait.</div>';
+  }, 30000);
+
+  const hardTimeoutId = setTimeout(() => {
+    abortController.abort();
+  }, 130000);
 
   try {
     const resp = await fetch('/api/tickets/generate', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ description: desc, project_id: currentProjectId })
+      body: JSON.stringify({ description: desc, project_id: currentProjectId }),
+      signal: abortController.signal
     });
-    clearTimeout(timeoutId);
+    clearTimeout(warningId);
+    clearTimeout(hardTimeoutId);
     if (!resp.ok) {
       const msg = await resp.text();
       throw new Error(msg);
@@ -1250,9 +1258,11 @@ async function startAIGeneration() {
     aiModalState.step = 3;
     renderAIModal();
   } catch (err) {
-    clearTimeout(timeoutId);
+    clearTimeout(warningId);
+    clearTimeout(hardTimeoutId);
     const errEl = document.getElementById('ai-gen-error');
-    if (errEl) errEl.innerHTML = `<div class="error-box">&#10007; ${escapeHtml(err.message)}<br><br><button class="btn btn-ghost" style="margin-top:8px" onclick="aiModalState.step=1;renderAIModal()">Try Again</button></div>`;
+    const msg = err.name === 'AbortError' ? 'Request timed out. Please try again.' : escapeHtml(err.message);
+    if (errEl) errEl.innerHTML = `<div class="error-box">&#10007; ${msg}<br><br><button class="btn btn-ghost" style="margin-top:8px" onclick="aiModalState.step=1;renderAIModal()">Try Again</button></div>`;
   }
 }
 
@@ -1264,28 +1274,38 @@ async function regenerateTicket() {
 
 async function startAIGenerationFromState() {
   const desc = aiModalState.description;
-  const timeoutId = setTimeout(() => {
+  const abortController = new AbortController();
+  aiModalState.abortController = abortController;
+
+  const warningId = setTimeout(() => {
     const errEl = document.getElementById('ai-gen-error');
-    if (errEl) errEl.innerHTML = '<div class="timeout-msg">&#9888; Taking longer than expected...</div>';
-  }, 25000);
-  aiModalState.timeoutId = timeoutId;
+    if (errEl) errEl.innerHTML = '<div class="timeout-msg">&#9888; AI is thinking... this can take up to 2 minutes, please wait.</div>';
+  }, 30000);
+
+  const hardTimeoutId = setTimeout(() => {
+    abortController.abort();
+  }, 130000);
 
   try {
     const resp = await fetch('/api/tickets/generate', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ description: desc, project_id: currentProjectId })
+      body: JSON.stringify({ description: desc, project_id: currentProjectId }),
+      signal: abortController.signal
     });
-    clearTimeout(timeoutId);
+    clearTimeout(warningId);
+    clearTimeout(hardTimeoutId);
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
     aiModalState.generatedData = data;
     aiModalState.step = 3;
     renderAIModal();
   } catch (err) {
-    clearTimeout(timeoutId);
+    clearTimeout(warningId);
+    clearTimeout(hardTimeoutId);
     const errEl = document.getElementById('ai-gen-error');
-    if (errEl) errEl.innerHTML = `<div class="error-box">&#10007; ${escapeHtml(err.message)}<br><br><button class="btn btn-ghost" style="margin-top:8px" onclick="aiModalState.step=1;renderAIModal()">Go Back</button></div>`;
+    const msg = err.name === 'AbortError' ? 'Request timed out. Please try again.' : escapeHtml(err.message);
+    if (errEl) errEl.innerHTML = `<div class="error-box">&#10007; ${msg}<br><br><button class="btn btn-ghost" style="margin-top:8px" onclick="aiModalState.step=1;renderAIModal()">Go Back</button></div>`;
   }
 }
 
@@ -1340,12 +1360,17 @@ async function applyRefinement() {
   const btn = document.querySelector('#ai-modal-content .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Refining...'; }
 
+  const abortController = new AbortController();
+  const hardTimeoutId = setTimeout(() => { abortController.abort(); }, 130000);
+
   try {
     const resp = await fetch('/api/tickets/refine', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ current_description: currentDesc, refinement_notes: notes })
+      body: JSON.stringify({ current_description: currentDesc, refinement_notes: notes }),
+      signal: abortController.signal
     });
+    clearTimeout(hardTimeoutId);
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
     aiModalState.generatedData = data;
@@ -1353,7 +1378,9 @@ async function applyRefinement() {
     aiModalState.step = 3;
     renderAIModal();
   } catch (err) {
-    document.getElementById('ai-refine-error').textContent = err.message;
+    clearTimeout(hardTimeoutId);
+    const msg = err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message;
+    document.getElementById('ai-refine-error').textContent = msg;
     if (btn) { btn.disabled = false; btn.textContent = 'Apply Refinement'; }
   }
 }
@@ -1366,7 +1393,7 @@ function goToCreatedTicket() {
 }
 
 function createAnotherTicket() {
-  aiModalState = { step: 1, generatedData: null, description: '', timeoutId: null };
+  aiModalState = { step: 1, generatedData: null, description: '', abortController: null };
   renderAIModal();
 }
 

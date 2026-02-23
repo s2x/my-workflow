@@ -90,7 +90,7 @@ func (h *AITicketHandler) HandleGenerateTicket(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
 	ticket, err := h.aiService.GenerateTicket(ctx, req.Description)
@@ -130,7 +130,7 @@ func (h *AITicketHandler) HandleRefineTicket(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
 	ticket, err := h.aiService.RefineTicket(ctx, req.CurrentDescription, req.RefinementNotes)

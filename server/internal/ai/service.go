@@ -30,22 +30,32 @@ func NewAITicketService(opencodeBin, qwenBin string) AITicketService {
 }
 
 const generateSystemPrompt = `You are a software ticket writer. Based on the user description, generate a structured ticket in JSON format.
-Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
+
+The business_description must be at least 3-5 sentences written in plain, non-technical language that a product manager or stakeholder can understand. Explain the problem being solved, who benefits from it, and what value it delivers. Avoid implementation details here.
+
+The technical_description must be at least 3-5 sentences describing implementation approach, which systems/layers are involved, edge cases to handle, and any integration points.
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no explanation, no code blocks):
 {
   "title": "short ticket title",
-  "business_description": "business context and value",
-  "technical_description": "technical implementation details",
+  "business_description": "3-5 sentence plain-language explanation of business value and problem being solved",
+  "technical_description": "3-5 sentence technical implementation details covering approach, affected systems, and edge cases",
   "priority": "Low|Medium|High|Critical",
   "complexity": "simple|moderate|complex",
   "affected_components": ["component1", "component2"]
 }`
 
 const refineSystemPrompt = `You are a software ticket writer. Refine the existing ticket description based on the refinement notes.
-Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
+
+The business_description must be at least 3-5 sentences written in plain, non-technical language that a product manager or stakeholder can understand. Explain the problem being solved, who benefits from it, and what value it delivers. Avoid implementation details here.
+
+The technical_description must be at least 3-5 sentences describing implementation approach, which systems/layers are involved, edge cases to handle, and any integration points.
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no explanation, no code blocks):
 {
   "title": "short ticket title",
-  "business_description": "business context and value",
-  "technical_description": "technical implementation details",
+  "business_description": "3-5 sentence plain-language explanation of business value and problem being solved",
+  "technical_description": "3-5 sentence technical implementation details covering approach, affected systems, and edge cases",
   "priority": "Low|Medium|High|Critical",
   "complexity": "simple|moderate|complex",
   "affected_components": ["component1", "component2"]
@@ -103,7 +113,7 @@ func (s *service) RefineTicket(ctx context.Context, currentDescription string, r
 }
 
 func (s *service) runWithContext(ctx context.Context, prompt string) (string, error) {
-	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	cmd := s.buildCommand(timeoutCtx, prompt)
@@ -115,7 +125,7 @@ func (s *service) runWithContext(ctx context.Context, prompt string) (string, er
 
 	if err := cmd.Run(); err != nil {
 		if timeoutCtx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("timeout: AI took longer than 30s")
+			return "", fmt.Errorf("timeout: AI took longer than 120s")
 		}
 		return "", fmt.Errorf("AI command failed: %w", err)
 	}
