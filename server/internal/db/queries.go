@@ -277,6 +277,38 @@ func (db *DB) GetTicketByID(id string) (*models.Ticket, error) {
 	return &t, nil
 }
 
+func (db *DB) UpdateTicket(t *models.Ticket) error {
+	t.UpdatedAt = time.Now()
+	_, err := db.conn.Exec(`
+		UPDATE tickets SET summary = ?, description = ?, acceptance_criteria = ?, priority = ?, labels = ?, updated_at = ? WHERE id = ?
+	`, t.Summary, t.Description, t.AcceptanceCriteria, t.Priority, t.Labels, t.UpdatedAt, t.ID)
+	return err
+}
+
+func (db *DB) GetWorkflowsByTicket(ticketID string) ([]models.Workflow, error) {
+	rows, err := db.conn.Query(`
+		SELECT w.id, w.project_id, w.ticket_id, w.status, w.branch_name, w.spec, w.retry_count, w.error, w.created_at, w.updated_at,
+		       COALESCE(t.summary, '') AS ticket_summary, COALESCE(t.jira_key, '') AS ticket_jira_key
+		FROM workflows w
+		LEFT JOIN tickets t ON w.ticket_id = t.id
+		WHERE w.ticket_id = ? ORDER BY w.created_at DESC
+	`, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workflows []models.Workflow
+	for rows.Next() {
+		var w models.Workflow
+		if err := rows.Scan(&w.ID, &w.ProjectID, &w.TicketID, &w.Status, &w.BranchName, &w.Spec, &w.RetryCount, &w.Error, &w.CreatedAt, &w.UpdatedAt, &w.TicketSummary, &w.TicketJiraKey); err != nil {
+			return nil, err
+		}
+		workflows = append(workflows, w)
+	}
+	return workflows, rows.Err()
+}
+
 func (db *DB) CreateWorkflow(w *models.Workflow) error {
 	w.ID = uuid.New().String()
 	now := time.Now()

@@ -724,6 +724,94 @@ func TestGetTicketsByProjectIncludesNonDone(t *testing.T) {
 	}
 }
 
+func TestUpdateTicket(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+
+	ticket.Summary = "Updated summary"
+	ticket.Description = "Updated description"
+	ticket.AcceptanceCriteria = "- Done"
+	ticket.Priority = "High"
+	ticket.Labels = "backend"
+
+	if err := db.UpdateTicket(ticket); err != nil {
+		t.Fatalf("UpdateTicket failed: %v", err)
+	}
+
+	retrieved, err := db.GetTicketByID(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetTicketByID failed: %v", err)
+	}
+
+	if retrieved.Summary != "Updated summary" {
+		t.Errorf("Expected summary %q, got %q", "Updated summary", retrieved.Summary)
+	}
+	if retrieved.Description != "Updated description" {
+		t.Errorf("Expected description %q, got %q", "Updated description", retrieved.Description)
+	}
+	if retrieved.AcceptanceCriteria != "- Done" {
+		t.Errorf("Expected acceptance_criteria %q, got %q", "- Done", retrieved.AcceptanceCriteria)
+	}
+	if retrieved.Priority != "High" {
+		t.Errorf("Expected priority %q, got %q", "High", retrieved.Priority)
+	}
+	if retrieved.Labels != "backend" {
+		t.Errorf("Expected labels %q, got %q", "backend", retrieved.Labels)
+	}
+}
+
+func TestGetWorkflowsByTicket(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+
+	wf1 := &models.Workflow{ProjectID: project.ID, TicketID: ticket.ID}
+	wf2 := &models.Workflow{ProjectID: project.ID, TicketID: ticket.ID}
+	if err := db.CreateWorkflow(wf1); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+	if err := db.CreateWorkflow(wf2); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+
+	workflows, err := db.GetWorkflowsByTicket(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByTicket failed: %v", err)
+	}
+
+	if len(workflows) != 2 {
+		t.Errorf("Expected 2 workflows, got %d", len(workflows))
+	}
+
+	for _, wf := range workflows {
+		if wf.TicketSummary != ticket.Summary {
+			t.Errorf("Expected TicketSummary %q, got %q", ticket.Summary, wf.TicketSummary)
+		}
+	}
+}
+
+func TestGetWorkflowsByTicketReturnsEmptyWhenNone(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+
+	workflows, err := db.GetWorkflowsByTicket(ticket.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByTicket failed: %v", err)
+	}
+
+	if workflows != nil {
+		t.Errorf("Expected nil/empty slice, got %d workflows", len(workflows))
+	}
+}
+
 func TestGetWorkflowsByProjectNoTicketReturnsEmptyStrings(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

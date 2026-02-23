@@ -133,6 +133,7 @@
     .project-card .project-name { font-size: 15px; font-weight: 600; }
     .project-card .project-path { font-size: 11px; color: var(--muted); font-family: monospace; margin-top: 4px; }
     .project-card .project-meta { display: flex; gap: 12px; margin-top: 6px; }
+    .ticket-card { cursor: pointer; }
   </style>
 </head>
 <body>
@@ -281,6 +282,44 @@
     </form>
   </div>
 
+  <div id="page-ticket" class="page hidden">
+    <div class="section">
+      <h2 id="ticket-page-title"></h2>
+      <form id="edit-ticket-form" style="max-width:600px" onsubmit="submitEditTicket(event)">
+        <div class="form-group">
+          <label>Summary *</label>
+          <input type="text" id="et-summary" placeholder="Brief description of the task" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="et-description" rows="6" placeholder="Detailed description..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Acceptance Criteria</label>
+          <textarea id="et-ac" rows="4" placeholder="- Criterion 1&#10;- Criterion 2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <select id="et-priority">
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+          </select>
+        </div>
+        <div id="edit-ticket-form-error" class="error-text" style="margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px">
+          <button type="submit" class="btn btn-primary" id="edit-ticket-submit-btn">Save Changes</button>
+          <button type="button" class="btn btn-ghost" onclick="navigate('project', currentProjectId)">Cancel</button>
+        </div>
+      </form>
+    </div>
+    <div class="section">
+      <h2>Workflows</h2>
+      <div id="ticket-workflows-list"></div>
+    </div>
+  </div>
+
   <div id="page-workflow" class="page hidden">
     <div class="header-row">
       <h2 id="wf-title" class="mono"></h2>
@@ -332,6 +371,7 @@ let currentPage = 'projects';
 let currentProjectId = '';
 let currentProjectName = '';
 let currentWfId = '';
+let currentTicketId = '';
 let pollTimer = null;
 let logEventSource = null;
 let autoScroll = true;
@@ -357,6 +397,12 @@ function updateBreadcrumb() {
     parts = [`<span class="breadcrumb-item" onclick="navigate('projects')">Projects</span>`,
              `<span class="breadcrumb-sep">/</span>`,
              `<span class="breadcrumb-current">${currentProjectName}</span>`];
+  } else if (currentPage === 'ticket') {
+    parts = [`<span class="breadcrumb-item" onclick="navigate('projects')">Projects</span>`,
+             `<span class="breadcrumb-sep">/</span>`,
+             `<span class="breadcrumb-item" onclick="navigate('project','${currentProjectId}')">${currentProjectName}</span>`,
+             `<span class="breadcrumb-sep">/</span>`,
+             `<span class="breadcrumb-current">Ticket ${currentTicketId.slice(0,8)}</span>`];
   } else if (currentPage === 'workflow') {
     parts = [`<span class="breadcrumb-item" onclick="navigate('projects')">Projects</span>`,
              `<span class="breadcrumb-sep">/</span>`,
@@ -373,6 +419,7 @@ function pageToUrl(page, param) {
   if (page === 'project') return '/projects/' + param;
   if (page === 'edit-project') return '/projects/' + param + '/edit';
   if (page === 'new-ticket') return '/projects/' + currentProjectId + '/tickets/new';
+  if (page === 'ticket') return '/projects/' + currentProjectId + '/tickets/' + param;
   if (page === 'workflow') return '/projects/' + currentProjectId + '/workflows/' + param;
   return '/';
 }
@@ -403,6 +450,10 @@ function navigate(page, param, skipPushState) {
     document.getElementById('page-new-ticket').classList.remove('hidden');
     document.getElementById('ticket-form').reset();
     document.getElementById('form-error').textContent = '';
+  } else if (page === 'ticket') {
+    currentTicketId = param;
+    document.getElementById('page-ticket').classList.remove('hidden');
+    loadTicket();
   } else if (page === 'workflow') {
     currentWfId = param;
     document.getElementById('page-workflow').classList.remove('hidden');
@@ -438,6 +489,12 @@ function navigateFromPath(path, skipPushState) {
     navigate('new-ticket', undefined, skipPushState);
     return;
   }
+  const ticketMatch = path.match(/^\/projects\/([^/]+)\/tickets\/([^/]+)$/);
+  if (ticketMatch) {
+    currentProjectId = ticketMatch[1];
+    navigate('ticket', ticketMatch[2], skipPushState);
+    return;
+  }
   const editProjectMatch = path.match(/^\/projects\/([^/]+)\/edit$/);
   if (editProjectMatch) {
     navigate('edit-project', editProjectMatch[1], skipPushState);
@@ -460,6 +517,7 @@ function startPoll() {
   pollTimer = setInterval(() => {
     if (currentPage === 'projects') loadProjects();
     else if (currentPage === 'project') loadProject();
+    else if (currentPage === 'ticket') loadTicket();
     else if (currentPage === 'workflow') loadWorkflow();
   }, 4000);
 }
@@ -610,7 +668,7 @@ async function loadProject() {
       tEl.innerHTML = tickets.map(t => {
         const has = workflows.some(w => w.ticket_id === t.id);
         return `
-          <div class="card">
+          <div class="card ticket-card" onclick="navigate('ticket','${t.id}')">
             <div class="card-row">
               <div>
                 <span class="mono" style="color:var(--primary);font-size:12px;margin-right:8px">${t.jira_key}</span>
@@ -620,7 +678,7 @@ async function loadProject() {
                 <span class="badge badge-zinc">${t.source}</span>
                 ${t.priority ? `<span class="badge badge-zinc">${t.priority}</span>` : ''}
                 ${!has
-                  ? `<button class="btn btn-primary" onclick="startWorkflow('${t.id}')">Start Workflow</button>`
+                  ? `<button class="btn btn-primary" onclick="event.stopPropagation();startWorkflow('${t.id}')">Start Workflow</button>`
                   : `<span style="color:var(--success);font-size:12px">Workflow active</span>`}
               </div>
             </div>
@@ -653,6 +711,77 @@ async function submitTicket(e) {
     document.getElementById('form-error').textContent = err.message;
   } finally {
     document.getElementById('submit-btn').disabled = false;
+  }
+}
+
+async function loadTicket() {
+  try {
+    const [ticket, workflows] = await Promise.all([
+      api('/tickets/' + currentTicketId),
+      api('/tickets/' + currentTicketId + '/workflows')
+    ]);
+
+    if (currentProjectName === '') {
+      try {
+        const project = await api('/projects/' + ticket.project_id);
+        currentProjectName = project.name;
+        currentProjectId = ticket.project_id;
+        updateBreadcrumb();
+      } catch {}
+    }
+
+    document.getElementById('ticket-page-title').textContent = ticket.jira_key + ': ' + ticket.summary;
+    document.getElementById('et-summary').value = ticket.summary;
+    document.getElementById('et-description').value = ticket.description || '';
+    document.getElementById('et-ac').value = ticket.acceptance_criteria || '';
+    document.getElementById('et-priority').value = ticket.priority || 'Medium';
+    document.getElementById('edit-ticket-form-error').textContent = '';
+
+    renderTicketWorkflows(workflows);
+  } catch {}
+}
+
+function renderTicketWorkflows(workflows) {
+  const el = document.getElementById('ticket-workflows-list');
+  if (!workflows.length) {
+    el.innerHTML = '<p class="empty">No workflows for this ticket yet.</p>';
+    return;
+  }
+  el.innerHTML = workflows.map(wf => `
+    <div class="card" style="cursor:pointer" onclick="navigate('workflow','${wf.id}')">
+      <div class="card-row">
+        <div class="card-left">
+          <span class="badge ${STATUS_BADGE[wf.status]||'badge-zinc'}">${wf.status}</span>
+          ${wf.branch_name ? `<span class="muted mono" style="font-size:11px">${wf.branch_name}</span>` : ''}
+        </div>
+        <span class="muted">${new Date(wf.created_at).toLocaleString()}</span>
+      </div>
+      ${wf.error ? `<div class="error-text" style="margin-top:8px">${wf.error}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function submitEditTicket(e) {
+  e.preventDefault();
+  const summary = document.getElementById('et-summary').value.trim();
+  if (!summary) {
+    document.getElementById('edit-ticket-form-error').textContent = 'Summary is required';
+    return;
+  }
+  document.getElementById('edit-ticket-submit-btn').disabled = true;
+  try {
+    await api('/tickets/' + currentTicketId, { method: 'PUT', body: JSON.stringify({
+      summary,
+      description: document.getElementById('et-description').value,
+      acceptance_criteria: document.getElementById('et-ac').value,
+      priority: document.getElementById('et-priority').value,
+      labels: ''
+    })});
+    await loadTicket();
+  } catch(err) {
+    document.getElementById('edit-ticket-form-error').textContent = err.message;
+  } finally {
+    document.getElementById('edit-ticket-submit-btn').disabled = false;
   }
 }
 

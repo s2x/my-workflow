@@ -34,7 +34,9 @@ func NewRouter(database *db.DB, engine *workflow.Engine) http.Handler {
 	mux.HandleFunc("POST /api/projects/{projectId}/workflows", workflowHandler.Start)
 
 	mux.HandleFunc("GET /api/tickets", ticketHandler.List)
-	mux.HandleFunc("GET /api/tickets/{key}", ticketHandler.GetByKey)
+	mux.HandleFunc("GET /api/tickets/{id}", ticketHandler.GetByID)
+	mux.HandleFunc("PUT /api/tickets/{id}", ticketHandler.Update)
+	mux.HandleFunc("GET /api/tickets/{id}/workflows", ticketHandler.GetWorkflows)
 
 	mux.HandleFunc("GET /api/workflows", workflowHandler.List)
 	mux.HandleFunc("GET /api/workflows/{id}", workflowHandler.Get)
