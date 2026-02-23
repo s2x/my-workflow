@@ -300,7 +300,7 @@ func (db *DB) GetWorkflowsByProject(projectID string) ([]models.Workflow, error)
 		       COALESCE(t.summary, '') AS ticket_summary, COALESCE(t.jira_key, '') AS ticket_jira_key
 		FROM workflows w
 		LEFT JOIN tickets t ON w.ticket_id = t.id
-		WHERE w.project_id = ? ORDER BY w.created_at DESC
+		WHERE w.project_id = ? AND w.status != 'DONE' ORDER BY w.created_at DESC
 	`, projectID)
 	if err != nil {
 		return nil, err

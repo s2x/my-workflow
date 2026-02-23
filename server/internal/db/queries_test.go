@@ -553,6 +553,103 @@ func TestGetWorkflowsByProjectReturnsTicketInfo(t *testing.T) {
 	}
 }
 
+func TestGetWorkflowsByProjectExcludesDoneWorkflows(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+
+	wfDone := &models.Workflow{ProjectID: project.ID, TicketID: ticket.ID}
+	if err := db.CreateWorkflow(wfDone); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+	if err := db.UpdateWorkflowStatus(wfDone.ID, models.WorkflowDone, ""); err != nil {
+		t.Fatalf("Failed to update workflow status: %v", err)
+	}
+
+	wfActive := &models.Workflow{ProjectID: project.ID, TicketID: ticket.ID}
+	if err := db.CreateWorkflow(wfActive); err != nil {
+		t.Fatalf("Failed to create workflow: %v", err)
+	}
+
+	workflows, err := db.GetWorkflowsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByProject failed: %v", err)
+	}
+
+	if len(workflows) != 1 {
+		t.Fatalf("Expected 1 workflow (DONE excluded), got %d", len(workflows))
+	}
+
+	if workflows[0].ID != wfActive.ID {
+		t.Errorf("Expected active workflow ID %q, got %q", wfActive.ID, workflows[0].ID)
+	}
+}
+
+func TestGetWorkflowsByProjectIncludesNonDoneStatuses(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+
+	statuses := []models.WorkflowStatus{
+		models.WorkflowCreated,
+		models.WorkflowCoding,
+		models.WorkflowFailed,
+		models.WorkflowAwaitingApproval,
+	}
+
+	for _, status := range statuses {
+		wf := &models.Workflow{ProjectID: project.ID, TicketID: ticket.ID}
+		if err := db.CreateWorkflow(wf); err != nil {
+			t.Fatalf("Failed to create workflow: %v", err)
+		}
+		if status != models.WorkflowCreated {
+			if err := db.UpdateWorkflowStatus(wf.ID, status, ""); err != nil {
+				t.Fatalf("Failed to update workflow status: %v", err)
+			}
+		}
+	}
+
+	workflows, err := db.GetWorkflowsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByProject failed: %v", err)
+	}
+
+	if len(workflows) != len(statuses) {
+		t.Errorf("Expected %d workflows, got %d", len(statuses), len(workflows))
+	}
+}
+
+func TestGetWorkflowsByProjectAllDoneReturnsEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := createTestProject(t, db)
+	ticket := createTestTicket(t, db, project.ID)
+
+	for i := 0; i < 3; i++ {
+		wf := &models.Workflow{ProjectID: project.ID, TicketID: ticket.ID}
+		if err := db.CreateWorkflow(wf); err != nil {
+			t.Fatalf("Failed to create workflow: %v", err)
+		}
+		if err := db.UpdateWorkflowStatus(wf.ID, models.WorkflowDone, ""); err != nil {
+			t.Fatalf("Failed to update workflow status: %v", err)
+		}
+	}
+
+	workflows, err := db.GetWorkflowsByProject(project.ID)
+	if err != nil {
+		t.Fatalf("GetWorkflowsByProject failed: %v", err)
+	}
+
+	if len(workflows) != 0 {
+		t.Errorf("Expected 0 workflows when all are DONE, got %d", len(workflows))
+	}
+}
+
 func TestGetWorkflowsByProjectNoTicketReturnsEmptyStrings(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
