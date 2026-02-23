@@ -48,7 +48,20 @@ func NewRouter(database *db.DB, engine *workflow.Engine) http.Handler {
 	mux.HandleFunc("GET /api/events", sseHandler.Stream)
 
 	staticFS, _ := fs.Sub(web.StaticFiles, "static")
-	mux.Handle("GET /", http.FileServer(http.FS(staticFS)))
+	fileServer := http.FileServer(http.FS(staticFS))
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			indexContent, err := fs.ReadFile(staticFS, "index.html")
+			if err != nil {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(indexContent)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 
 	return mux
 }

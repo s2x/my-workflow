@@ -366,7 +366,17 @@ function updateBreadcrumb() {
   el.innerHTML = parts.join('');
 }
 
-function navigate(page, param) {
+function pageToUrl(page, param) {
+  if (page === 'projects') return '/';
+  if (page === 'new-project') return '/projects/new';
+  if (page === 'project') return '/projects/' + param;
+  if (page === 'edit-project') return '/projects/' + param + '/edit';
+  if (page === 'new-ticket') return '/projects/' + currentProjectId + '/tickets/new';
+  if (page === 'workflow') return '/projects/' + currentProjectId + '/workflows/' + param;
+  return '/';
+}
+
+function navigate(page, param, skipPushState) {
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   currentPage = page;
 
@@ -398,8 +408,50 @@ function navigate(page, param) {
     loadWorkflow();
   }
 
+  if (!skipPushState) {
+    window.history.pushState({ page, param }, '', pageToUrl(page, param));
+  }
+
   updateBreadcrumb();
   startPoll();
+}
+
+window.addEventListener('popstate', function(e) {
+  if (e.state) {
+    navigate(e.state.page, e.state.param, true);
+  } else {
+    navigateFromPath(window.location.pathname, true);
+  }
+});
+
+function navigateFromPath(path, skipPushState) {
+  const wfMatch = path.match(/^\/projects\/([^/]+)\/workflows\/([^/]+)$/);
+  if (wfMatch) {
+    currentProjectId = wfMatch[1];
+    navigate('workflow', wfMatch[2], skipPushState);
+    return;
+  }
+  const newTicketMatch = path.match(/^\/projects\/([^/]+)\/tickets\/new$/);
+  if (newTicketMatch) {
+    currentProjectId = newTicketMatch[1];
+    navigate('new-ticket', undefined, skipPushState);
+    return;
+  }
+  const editProjectMatch = path.match(/^\/projects\/([^/]+)\/edit$/);
+  if (editProjectMatch) {
+    navigate('edit-project', editProjectMatch[1], skipPushState);
+    return;
+  }
+  if (path === '/projects/new') {
+    navigate('new-project', undefined, skipPushState);
+    return;
+  }
+  const projectMatch = path.match(/^\/projects\/([^/]+)$/);
+  if (projectMatch) {
+    navigate('project', projectMatch[1], skipPushState);
+    return;
+  }
+  navigate('projects', undefined, skipPushState);
 }
 
 function startPoll() {
@@ -499,7 +551,8 @@ async function submitEditProject(e) {
       auto_test: document.getElementById('ep-autotest').checked,
       auto_review: document.getElementById('ep-autoreview').checked
     })});
-    navigate('projects');
+navigateFromPath(window.location.pathname, true);
+window.history.replaceState({ page: currentPage, param: currentProjectId || currentWfId || undefined }, '', window.location.pathname);
   } catch(err) {
     document.getElementById('edit-project-form-error').textContent = err.message;
   } finally {
