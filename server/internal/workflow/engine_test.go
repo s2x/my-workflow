@@ -451,11 +451,21 @@ func TestRejectDeploymentFailsWhenMaxRetriesExceeded(t *testing.T) {
 }
 
 func TestRestartWorkflowFromFailed(t *testing.T) {
-	engine, database := setupTestEngine(t)
+	engine, database, repoDir := setupTestEngineWithRepo(t)
 	defer database.Close()
 
-	project := createTestProjectWithFlags(t, database, false, false)
-	ticket := createTestTicket(t, database, project.ID)
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "TEST-123",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
 
 	wf := &models.Workflow{
 		ProjectID:  project.ID,
@@ -486,8 +496,8 @@ func TestRestartWorkflowFromFailed(t *testing.T) {
 	if wf.RetryCount != 0 {
 		t.Errorf("Expected retry_count=0 after restart, got %d", wf.RetryCount)
 	}
-	if wf.BranchName != "" {
-		t.Errorf("Expected empty branch_name after restart, got %q", wf.BranchName)
+	if wf.BranchName != "feature/test-123" {
+		t.Errorf("Expected branch_name=feature/test-123 after restart, got %q", wf.BranchName)
 	}
 
 	tasks, _ := database.GetTasksByWorkflow(wf.ID)
@@ -500,11 +510,21 @@ func TestRestartWorkflowFromFailed(t *testing.T) {
 }
 
 func TestRestartWorkflowFromAwaitingApproval(t *testing.T) {
-	engine, database := setupTestEngine(t)
+	engine, database, repoDir := setupTestEngineWithRepo(t)
 	defer database.Close()
 
-	project := createTestProjectWithFlags(t, database, false, false)
-	ticket := createTestTicket(t, database, project.ID)
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "TEST-123",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
 
 	wf := &models.Workflow{
 		ProjectID:  project.ID,
@@ -529,11 +549,21 @@ func TestRestartWorkflowFromAwaitingApproval(t *testing.T) {
 }
 
 func TestRestartWorkflowFromCoding(t *testing.T) {
-	engine, database := setupTestEngine(t)
+	engine, database, repoDir := setupTestEngineWithRepo(t)
 	defer database.Close()
 
-	project := createTestProjectWithFlags(t, database, false, false)
-	ticket := createTestTicket(t, database, project.ID)
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "TEST-123",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
 
 	wf := &models.Workflow{
 		ProjectID:  project.ID,
@@ -608,12 +638,91 @@ func TestRestartWorkflowNonExistent(t *testing.T) {
 	}
 }
 
-func TestRestartWorkflowDeletesOldTasks(t *testing.T) {
-	engine, database := setupTestEngine(t)
+func TestRestartWorkflowFailsWhenDeleteBranchFails(t *testing.T) {
+	engine, database, repoDir := setupTestEngineWithRepo(t)
 	defer database.Close()
 
-	project := createTestProjectWithFlags(t, database, false, false)
-	ticket := createTestTicket(t, database, project.ID)
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "TEST-123",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
+
+	featureBranch := "feature/test-123"
+	trackedFile := "tracked.txt"
+	setupCmds := [][]string{
+		{"git", "checkout", "-b", featureBranch},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup command %v failed: %v\nOutput: %s", args, err, string(out))
+		}
+	}
+
+	createAndCommit := func(dir, filename, content string) {
+		f, _ := os.Create(dir + "/" + filename)
+		f.WriteString(content)
+		f.Close()
+		exec.Command("git", "add", filename).Run()
+		exec.Command("git", "commit", "-m", "add file").Run()
+	}
+	_ = createAndCommit
+
+	addCmd := exec.Command("bash", "-c", "echo 'original' > "+trackedFile+" && git add "+trackedFile+" && git commit -m 'add tracked file' && git push -u origin "+featureBranch+" && git checkout master")
+	addCmd.Dir = repoDir
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		t.Fatalf("setup failed: %v\nOutput: %s", err, string(out))
+	}
+
+	checkoutFeature := exec.Command("git", "checkout", featureBranch)
+	checkoutFeature.Dir = repoDir
+	if out, err := checkoutFeature.CombinedOutput(); err != nil {
+		t.Fatalf("checkout feature failed: %v\nOutput: %s", err, string(out))
+	}
+
+	modifyCmd := exec.Command("bash", "-c", "echo 'modified' > "+trackedFile)
+	modifyCmd.Dir = repoDir
+	modifyCmd.Run()
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowFailed,
+		BranchName: featureBranch,
+	}
+	database.CreateWorkflow(wf)
+
+	err := engine.RestartWorkflow(wf.ID)
+	if err == nil {
+		t.Fatal("Expected error when DeleteBranch fails due to uncommitted changes, got nil")
+	}
+}
+
+func TestRestartWorkflowDeletesOldTasks(t *testing.T) {
+	engine, database, repoDir := setupTestEngineWithRepo(t)
+	defer database.Close()
+
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "TEST-123",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
 
 	wf := &models.Workflow{
 		ProjectID: project.ID,
@@ -644,11 +753,21 @@ func TestRestartWorkflowDeletesOldTasks(t *testing.T) {
 }
 
 func TestRestartWorkflowAddsChatMessage(t *testing.T) {
-	engine, database := setupTestEngine(t)
+	engine, database, repoDir := setupTestEngineWithRepo(t)
 	defer database.Close()
 
-	project := createTestProjectWithFlags(t, database, false, false)
-	ticket := createTestTicket(t, database, project.ID)
+	project := &models.Project{
+		Name:       "test-project",
+		RepoPath:   repoDir,
+		BaseBranch: "master",
+	}
+	database.CreateProject(project)
+	ticket := &models.Ticket{
+		ProjectID: project.ID,
+		JiraKey:   "TEST-123",
+		Summary:   "Test ticket",
+	}
+	database.CreateTicket(ticket)
 
 	wf := &models.Workflow{
 		ProjectID: project.ID,

@@ -585,7 +585,8 @@ func (e *Engine) RestartWorkflow(workflowID string) error {
 
 	if wf.BranchName != "" {
 		if err := e.runner.DeleteBranch(project.RepoPath, wf.BranchName, project.BaseBranch); err != nil {
-			e.logger.Warn("failed to delete branch during restart", "branch", wf.BranchName, "error", err)
+			e.logger.Error("failed to delete branch during restart", "branch", wf.BranchName, "error", err)
+			return fmt.Errorf("failed to delete branch during restart: %w", err)
 		}
 	}
 
@@ -606,10 +607,10 @@ func (e *Engine) RestartWorkflow(workflowID string) error {
 
 	branchName := fmt.Sprintf("feature/%s", strings.ToLower(ticket.JiraKey))
 	if err := e.runner.PrepareBranch(project.RepoPath, branchName, ""); err != nil {
-		e.logger.Warn("failed to prepare branch during restart", "branch", branchName, "error", err)
-	} else {
-		e.db.UpdateWorkflowBranch(workflowID, branchName)
+		e.logger.Error("failed to prepare branch during restart", "branch", branchName, "error", err)
+		return fmt.Errorf("failed to prepare branch during restart: %w", err)
 	}
+	e.db.UpdateWorkflowBranch(workflowID, branchName)
 
 	pb := NewPromptBuilder(project.BaseBranch)
 	prompt := pb.BuildDescribePrompt(ticket)
