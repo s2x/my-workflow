@@ -12,8 +12,6 @@ import (
 	"github.com/piotr-halas/decodo-workflow/internal/models"
 )
 
-const maxRetries = 3
-
 type Engine struct {
 	db     *db.DB
 	runner *agent.Runner
@@ -297,25 +295,8 @@ func (e *Engine) afterTest(wf *models.Workflow, ticket *models.Ticket, output st
 	}
 
 	if err := json.Unmarshal([]byte(output), &testResult); err == nil && testResult.Result == "FAIL" {
-		if wf.RetryCount >= maxRetries {
-			e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "max retries exceeded after test failures")
-			e.chatMsg(wf.ID, "system", "", "Workflow failed: max retries exceeded")
-			return
-		}
-
-		e.db.IncrementWorkflowRetry(wf.ID)
-		issues := strings.Join(testResult.Issues, "\n- ")
-		prompt := pb.BuildFixPrompt(ticket, wf.Spec, wf.BranchName, issues)
-		fixTask := &models.Task{
-			WorkflowID: wf.ID,
-			Type:       models.TaskFix,
-			Status:     models.TaskQueued,
-			Agent:      "coder",
-			Prompt:     prompt,
-		}
-		e.db.CreateTask(fixTask)
-		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowCoding, "")
-		e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Tests failed, sending back to coder for fixes (retry %d/%d)", wf.RetryCount+1, maxRetries))
+		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "tests failed")
+		e.chatMsg(wf.ID, "system", "", "Workflow failed: tests failed")
 		return
 	}
 
@@ -365,24 +346,8 @@ func (e *Engine) afterReview(wf *models.Workflow, ticket *models.Ticket, output 
 		}
 
 		if hasCritical {
-			if wf.RetryCount >= maxRetries {
-				e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "max retries exceeded after review")
-				e.chatMsg(wf.ID, "system", "", "Workflow failed: max retries exceeded after critical review issues")
-				return
-			}
-
-			e.db.IncrementWorkflowRetry(wf.ID)
-			prompt := pb.BuildFixPrompt(ticket, wf.Spec, wf.BranchName, strings.Join(issues, "\n"))
-			fixTask := &models.Task{
-				WorkflowID: wf.ID,
-				Type:       models.TaskFix,
-				Status:     models.TaskQueued,
-				Agent:      "coder",
-				Prompt:     prompt,
-			}
-			e.db.CreateTask(fixTask)
-			e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowCoding, "")
-			e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Review found critical issues, sending back to coder (retry %d/%d)", wf.RetryCount+1, maxRetries))
+			e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, "review found critical issues")
+			e.chatMsg(wf.ID, "system", "", "Workflow failed: review found critical issues")
 			return
 		}
 	}
@@ -434,22 +399,8 @@ func (e *Engine) handleTaskFailure(task models.Task) {
 		return
 	}
 
-	if wf.RetryCount >= maxRetries {
-		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, fmt.Sprintf("task %s failed after max retries", task.Type))
-		e.chatMsg(wf.ID, "system", "", "Workflow failed: max retries exceeded")
-		return
-	}
-
-	e.db.IncrementWorkflowRetry(wf.ID)
-	retryTask := &models.Task{
-		WorkflowID: task.WorkflowID,
-		Type:       task.Type,
-		Status:     models.TaskQueued,
-		Agent:      task.Agent,
-		Prompt:     task.Prompt,
-	}
-	e.db.CreateTask(retryTask)
-	e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Task %s failed, retrying (%d/%d)...", task.Type, wf.RetryCount+1, maxRetries))
+	e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, fmt.Sprintf("task %s failed", task.Type))
+	e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Workflow failed: task %s failed", task.Type))
 }
 
 func (e *Engine) ApproveDeployment(workflowID string) error {
@@ -513,12 +464,6 @@ func (e *Engine) RejectDeployment(workflowID string, comment string) error {
 
 	e.chatMsg(wf.ID, "user", "", fmt.Sprintf("Deployment rejected. Reason: %s", comment))
 
-	if wf.RetryCount >= maxRetries {
-		e.db.UpdateWorkflowStatus(wf.ID, models.WorkflowFailed, fmt.Sprintf("rejected by user after max retries: %s", comment))
-		e.chatMsg(wf.ID, "system", "", "Workflow failed: max retries exceeded")
-		return nil
-	}
-
 	ticket, err := e.db.GetTicketByID(wf.TicketID)
 	if err != nil || ticket == nil {
 		return fmt.Errorf("ticket not found for workflow")
@@ -548,7 +493,7 @@ func (e *Engine) RejectDeployment(workflowID string, comment string) error {
 		return err
 	}
 
-	e.chatMsg(wf.ID, "system", "", fmt.Sprintf("Sending back to coder for fixes based on user feedback (retry %d/%d)", wf.RetryCount+1, maxRetries))
+	e.chatMsg(wf.ID, "system", "", "Sending back to coder for fixes based on user feedback")
 	return nil
 }
 

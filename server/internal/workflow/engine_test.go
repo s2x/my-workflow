@@ -423,7 +423,7 @@ func TestRejectDeploymentIncrementsRetryCount(t *testing.T) {
 	}
 }
 
-func TestRejectDeploymentFailsWhenMaxRetriesExceeded(t *testing.T) {
+func TestRejectDeploymentAlwaysAllowsFix(t *testing.T) {
 	engine, database := setupTestEngine(t)
 	defer database.Close()
 
@@ -436,17 +436,17 @@ func TestRejectDeploymentFailsWhenMaxRetriesExceeded(t *testing.T) {
 		Status:     models.WorkflowAwaitingApproval,
 		BranchName: "feature/test-123",
 		Spec:       "{}",
-		RetryCount: maxRetries,
+		RetryCount: 100,
 	}
 	database.CreateWorkflow(wf)
 
-	if err := engine.RejectDeployment(wf.ID, "Za dużo prób"); err != nil {
+	if err := engine.RejectDeployment(wf.ID, "Still needs work"); err != nil {
 		t.Fatalf("RejectDeployment failed: %v", err)
 	}
 
 	wf, _ = database.GetWorkflow(wf.ID)
-	if wf.Status != models.WorkflowFailed {
-		t.Errorf("Expected status WorkflowFailed when maxRetries exceeded, got %s", wf.Status)
+	if wf.Status != models.WorkflowCoding {
+		t.Errorf("Expected status WorkflowCoding regardless of retry count, got %s", wf.Status)
 	}
 }
 
@@ -795,7 +795,7 @@ func TestRestartWorkflowAddsChatMessage(t *testing.T) {
 	}
 }
 
-func TestWorkflowTestFailureRetry(t *testing.T) {
+func TestWorkflowTestFailureFails(t *testing.T) {
 	engine, database := setupTestEngine(t)
 	defer database.Close()
 
@@ -817,23 +817,89 @@ func TestWorkflowTestFailureRetry(t *testing.T) {
 	engine.afterTest(wf, ticket, testOutput, pb)
 
 	wf, _ = database.GetWorkflow(wf.ID)
-	if wf.RetryCount != 1 {
-		t.Errorf("Expected RetryCount=1 after test failure, got %d", wf.RetryCount)
-	}
-	if wf.Status != models.WorkflowCoding {
-		t.Errorf("Expected status WorkflowCoding after test failure, got %s", wf.Status)
+	if wf.Status != models.WorkflowFailed {
+		t.Errorf("Expected status WorkflowFailed after test failure, got %s", wf.Status)
 	}
 
 	tasks, _ := database.GetTasksByWorkflow(wf.ID)
-	foundFixTask := false
 	for _, task := range tasks {
 		if task.Type == models.TaskFix {
-			foundFixTask = true
+			t.Error("Expected no fix task after test failure (no auto-retry)")
 		}
 	}
+}
 
-	if !foundFixTask {
-		t.Error("Expected fix task after test failure")
+func TestWorkflowReviewCriticalIssuesFailsWorkflow(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, true)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowReviewing,
+		BranchName: "feature/test-123",
+		Spec:       "{}",
+		RetryCount: 0,
+	}
+	database.CreateWorkflow(wf)
+
+	pb := NewPromptBuilder(project.BaseBranch)
+	reviewOutput := `{"result":"CHANGES_REQUESTED","comments":[{"severity":"critical","message":"Security issue"}],"summary":"Critical problems found"}`
+	engine.afterReview(wf, ticket, reviewOutput, pb)
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowFailed {
+		t.Errorf("Expected status WorkflowFailed after critical review issues, got %s", wf.Status)
+	}
+
+	tasks, _ := database.GetTasksByWorkflow(wf.ID)
+	for _, task := range tasks {
+		if task.Type == models.TaskFix {
+			t.Error("Expected no fix task after critical review (no auto-retry)")
+		}
+	}
+}
+
+func TestHandleTaskFailureFailsWorkflow(t *testing.T) {
+	engine, database := setupTestEngine(t)
+	defer database.Close()
+
+	project := createTestProjectWithFlags(t, database, false, false)
+	ticket := createTestTicket(t, database, project.ID)
+
+	wf := &models.Workflow{
+		ProjectID:  project.ID,
+		TicketID:   ticket.ID,
+		Status:     models.WorkflowCoding,
+		BranchName: "feature/test-123",
+		RetryCount: 0,
+	}
+	database.CreateWorkflow(wf)
+
+	_ = ticket
+
+	task := models.Task{
+		WorkflowID: wf.ID,
+		Type:       models.TaskCode,
+		Status:     models.TaskFailed,
+		Agent:      "coder",
+	}
+
+	engine.handleTaskFailure(task)
+
+	wf, _ = database.GetWorkflow(wf.ID)
+	if wf.Status != models.WorkflowFailed {
+		t.Errorf("Expected status WorkflowFailed after task failure, got %s", wf.Status)
+	}
+
+	tasks, _ := database.GetTasksByWorkflow(wf.ID)
+	for _, task := range tasks {
+		if task.Status == models.TaskQueued {
+			t.Error("Expected no queued retry task after failure (no auto-retry)")
+		}
 	}
 }
 
